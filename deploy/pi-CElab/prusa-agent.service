@@ -1,0 +1,20 @@
+# Place this file at /etc/systemd/system/prusa-agent.service on the Raspberry Pi
+# Enables the agent to start on boot and restart automatically on crash
+
+[Unit]
+Description=Prusa MQTT Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/prusa-agent
+ExecStart=/usr/bin/python3 /home/pi/prusa-agent/prusa_mqtt_agent.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
