@@ -88,8 +88,8 @@ def insert_status_log(conn, name, data, online):
             INSERT INTO machine_status_logs
               (machine_id, timestamp, state, online, active,
                temp_nozzle, target_nozzle, temp_bed, target_bed,
-               job_progress, job_remaining)
-            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               job_progress, job_remaining, filament_type)
+            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             mid,
             data.get("state"),
@@ -101,6 +101,7 @@ def insert_status_log(conn, name, data, online):
             data.get("bed_target"),
             data.get("progress"),
             data.get("remaining"),
+            data.get("filament_type"),
         ))
     conn.commit()
 
@@ -291,6 +292,7 @@ def poll_prusa(conn, mqtt_pub):
                 "progress":      j.get("progress"),
                 "remaining":     j.get("time_remaining"),
                 "filename":      (job or {}).get("file", {}).get("display_name"),
+                "filament_type": (job or {}).get("file", {}).get("meta", {}).get("filament_type"),
             }
             mqtt_pub.publish(f"{MQTT_PREFIX}/{name}/online",
                              json.dumps({"online": online}), qos=1, retain=True)
@@ -360,3 +362,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+    

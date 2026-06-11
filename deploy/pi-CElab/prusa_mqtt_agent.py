@@ -81,7 +81,8 @@ def insert_status_log(conn, name, status_data, job_data, online):
         return
     p = (status_data or {}).get("printer", {})
     j = (status_data or {}).get("job", {})
-    active = job_data is not None and job_data.get("state") == "PRINTING"
+    active        = job_data is not None and job_data.get("state") == "PRINTING"
+    filament_type = (job_data or {}).get("file", {}).get("meta", {}).get("filament_type")
 
     with conn.cursor() as cur:
         cur.execute("""
@@ -89,8 +90,8 @@ def insert_status_log(conn, name, status_data, job_data, online):
               (machine_id, timestamp, state, online, active,
                temp_nozzle, target_nozzle, temp_bed, target_bed,
                axis_z, speed, flow, fan_hotend_rpm, fan_print_rpm,
-               job_progress, job_remaining)
-            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               job_progress, job_remaining, filament_type)
+            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             mid,
             p.get("state"),
@@ -107,6 +108,7 @@ def insert_status_log(conn, name, status_data, job_data, online):
             p.get("fan_print"),
             j.get("progress"),
             j.get("time_remaining"),
+            filament_type,
         ))
     conn.commit()
 
@@ -305,3 +307,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+    
