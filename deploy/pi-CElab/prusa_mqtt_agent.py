@@ -1,9 +1,14 @@
 """
 Prusa MQTT + Database Agent (CELab)
 Runs on Raspberry Pi, every 30 seconds:
-  1. Collects data from all printers
-  2. Publishes to MQTT
+  1. Collects data from all printers via PrusaLink HTTP API
+  2. Publishes to cetools MQTT broker
   3. Writes to Supabase PostgreSQL (status logs + event detection)
+
+Filament type, layer height, and nozzle diameter are extracted from the
+PrusaSlicer filename convention:
+  e.g. model_0.4n_0.2mm_PLA_COREONE_1h30m.bgcode
+       -> filament_type=PLA, layer_height=0.2, nozzle_diameter=0.4
 
 Dependencies:
     pip3 install requests paho-mqtt psycopg2-binary --break-system-packages
@@ -12,7 +17,7 @@ Credentials and printer configs live in config.py (not committed to git).
 Copy config.example.py to config.py and fill in real values.
 """
 
-import json, time, logging, requests
+import re, json, time, logging, requests
 from requests.auth import HTTPDigestAuth
 import paho.mqtt.client as mqtt
 import psycopg2
@@ -74,6 +79,35 @@ def ensure_machines(conn, all_info):
     log.info(f"Machines synced: {list(machine_ids.keys())}")
 
 
+# ── Parse PrusaSlicer filename metadata ───────────────────────
+def parse_filename_meta(display_name):
+    """Extract print parameters from PrusaSlicer filename convention.
+
+    PrusaSlicer embeds slice settings into the exported filename:
+      <model>_<nozzle>n_<layer>mm_<filament>_<printer>_<time>.bgcode
+      e.g. part_0.4n_0.2mm_PLA_COREONE_1h30m.bgcode
+
+    Returns a dict with any of: filament_type, layer_height, nozzle_diameter
+    Falls back gracefully if the filename doesn't match the convention.
+    """
+    result = {}
+    if not display_name:
+        return result
+    # Nozzle diameter: e.g. _0.4n_
+    m = re.search(r'_(\d+\.\d+)n_', display_name)
+    if m:
+        result['nozzle_diameter'] = float(m.group(1))
+    # Layer height: e.g. _0.2mm_
+    m = re.search(r'_(\d+\.\d+)mm_', display_name)
+    if m:
+        result['layer_height'] = float(m.group(1))
+    # Filament type: e.g. _PLA_ / _PETG_ / _ASA_ / _PLA+_
+    m = re.search(r'_\d+\.\d+mm_([A-Z][A-Z0-9+]*)_', display_name)
+    if m:
+        result['filament_type'] = m.group(1)
+    return result
+
+
 # ── Write status log ──────────────────────────────────────────
 def insert_status_log(conn, name, status_data, job_data, online):
     mid = machine_ids.get(name)
@@ -81,8 +115,18 @@ def insert_status_log(conn, name, status_data, job_data, online):
         return
     p = (status_data or {}).get("printer", {})
     j = (status_data or {}).get("job", {})
-    active        = job_data is not None and job_data.get("state") == "PRINTING"
-    filament_type = (job_data or {}).get("file", {}).get("meta", {}).get("filament_type")
+
+    active       = job_data is not None and job_data.get("state") == "PRINTING"
+    display_name = (job_data or {}).get("file", {}).get("display_name", "")
+    fname_meta   = parse_filename_meta(display_name)
+
+    # Prefer API metadata; fall back to filename parsing
+    filament_type = (
+        (job_data or {}).get("file", {}).get("meta", {}).get("filament_type")
+        or fname_meta.get("filament_type")
+    )
+    layer_height = fname_meta.get("layer_height")
+    nozzle_diam  = fname_meta.get("nozzle_diameter")
 
     with conn.cursor() as cur:
         cur.execute("""
@@ -90,8 +134,8 @@ def insert_status_log(conn, name, status_data, job_data, online):
               (machine_id, timestamp, state, online, active,
                temp_nozzle, target_nozzle, temp_bed, target_bed,
                axis_z, speed, flow, fan_hotend_rpm, fan_print_rpm,
-               job_progress, job_remaining, filament_type)
-            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               job_progress, job_remaining, filament_type, layer_height, nozzle_diameter)
+            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             mid,
             p.get("state"),
@@ -109,6 +153,8 @@ def insert_status_log(conn, name, status_data, job_data, online):
             j.get("progress"),
             j.get("time_remaining"),
             filament_type,
+            layer_height,
+            nozzle_diam,
         ))
     conn.commit()
 
@@ -235,16 +281,24 @@ def flatten_status(raw):
 
 
 def flatten_job(raw):
+    """Flatten job data for MQTT publish.
+    Note: filament_type here comes from file metadata only (for MQTT payload).
+    The DB insert also checks the filename via parse_filename_meta as fallback.
+    """
     if not raw: return {"active": False}
-    f = raw.get("file", {}); m = f.get("meta", {})
+    f = raw.get("file", {})
+    m = f.get("meta", {})
+    fname_meta = parse_filename_meta(f.get("display_name", ""))
     return {
-        "active": True, "state": raw.get("state"),
-        "progress": raw.get("progress"),
+        "active":        True,
+        "state":         raw.get("state"),
+        "progress":      raw.get("progress"),
         "time_printing": raw.get("time_printing"),
         "time_remaining": raw.get("time_remaining"),
-        "filename": f.get("display_name") or f.get("name"),
-        "filament_type": m.get("filament_type"),
-        "layer_height": m.get("layer_height"),
+        "filename":      f.get("display_name") or f.get("name"),
+        "filament_type": m.get("filament_type") or fname_meta.get("filament_type"),
+        "layer_height":  m.get("layer_height")  or fname_meta.get("layer_height"),
+        "nozzle_diameter": fname_meta.get("nozzle_diameter"),
     }
 
 

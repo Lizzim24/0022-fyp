@@ -13,7 +13,7 @@ IPs are discovered automatically via ARP table lookup by MAC address.
 Credentials and printer configs live in config.py (not committed to git).
 Copy config.example.py to config.py and fill in real values.
 """
-import json, time, logging, ssl, subprocess, requests
+import re, json, time, logging, ssl, subprocess, requests
 from config import (
     MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASSWORD, MQTT_PREFIX,
     DB_PARAMS, BAMBU_PRINTERS, PRUSA_PRINTERS, POLL_INTERVAL
@@ -34,10 +34,33 @@ last_db_write     = {}  # name -> last write timestamp
 last_connectivity = {}  # name -> True/False, dedup offline events
 prev_state        = {}  # name -> last known state dict
 bambu_clients     = {}  # name -> paho client
+ams_cache         = {}  # name -> {"filament_type": str} from last AMS payload
 
 
 def get_db():
     return psycopg2.connect(**DB_PARAMS)
+
+
+# ── Parse PrusaSlicer filename metadata ───────────────────────
+def parse_filename_meta(display_name):
+    """Extract print parameters from PrusaSlicer filename convention.
+    e.g. part_0.4n_0.2mm_PLA_COREONE_1h30m.bgcode
+    -> filament_type=PLA, layer_height=0.2, nozzle_diameter=0.4
+    Only applies to Prusa printers (Bambu uses AMS for filament info).
+    """
+    result = {}
+    if not display_name:
+        return result
+    m = re.search(r'_(\d+\.\d+)n_', display_name)
+    if m:
+        result['nozzle_diameter'] = float(m.group(1))
+    m = re.search(r'_(\d+\.\d+)mm_', display_name)
+    if m:
+        result['layer_height'] = float(m.group(1))
+    m = re.search(r'_\d+\.\d+mm_([A-Z][A-Z0-9+]*)_', display_name)
+    if m:
+        result['filament_type'] = m.group(1)
+    return result
 
 
 # ── IP discovery via ARP table (match by MAC) ─────────────────
@@ -88,8 +111,10 @@ def insert_status_log(conn, name, data, online):
             INSERT INTO machine_status_logs
               (machine_id, timestamp, state, online, active,
                temp_nozzle, target_nozzle, temp_bed, target_bed,
-               job_progress, job_remaining, filament_type)
-            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               job_progress, job_remaining,
+               filament_type, nozzle_diameter, layer_height,
+               filament_brand, filament_color, filament_remain)
+            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             mid,
             data.get("state"),
@@ -102,6 +127,11 @@ def insert_status_log(conn, name, data, online):
             data.get("progress"),
             data.get("remaining"),
             data.get("filament_type"),
+            data.get("nozzle_diameter"),
+            data.get("layer_height"),
+            data.get("filament_brand"),
+            data.get("filament_color"),
+            data.get("filament_remain"),
         ))
     conn.commit()
 
@@ -181,18 +211,64 @@ def connect_bambu(cfg, mqtt_pub, conn):
             raw_state  = print_data.get("gcode_state", "UNKNOWN")
             state      = BAMBU_STATE_MAP.get(raw_state, raw_state)
             active     = state == "PRINTING"
+
+            # ── Extract AMS filament data ─────────────────────────
+            # tray_now: "0"-"3" = AMS slot, "254" = external spool, "255" = none/idle
+            ams_info = print_data.get("ams", {})
+            if ams_info:
+                tray_now = str(ams_info.get("tray_now", "255"))
+                ams_list = ams_info.get("ams", [])
+                if tray_now not in ("254", "255") and ams_list:
+                    try:
+                        tray_idx = int(tray_now) % 4
+                        unit_idx = int(tray_now) // 4
+                        tray = ams_list[unit_idx].get("tray", [])[tray_idx]
+                        ams_cache[name] = {
+                            "filament_type":    tray.get("tray_type"),
+                            "filament_brand":   tray.get("tray_sub_brands"),
+                            "filament_color":   tray.get("tray_color"),
+                            "filament_remain":  tray.get("remain"),
+                        }
+                    except (IndexError, KeyError, ValueError):
+                        pass
+                elif tray_now == "254":  # External spool (vir_slot id=254)
+                    vt_list = [s for s in print_data.get("vir_slot", []) if s.get("id") == "254"]
+                    if vt_list:
+                        vt = vt_list[0]
+                        ams_cache[name] = {
+                            "filament_type":   vt.get("tray_type"),
+                            "filament_brand":  vt.get("tray_sub_brands"),
+                            "filament_color":  vt.get("tray_color"),
+                            "filament_remain": vt.get("remain"),
+                        }
+
+            # Nozzle diameter available directly from payload (e.g. "0.4")
+            nozzle_diam_raw = print_data.get("nozzle_diameter")
+            if nozzle_diam_raw is not None:
+                try:
+                    ams_cache.setdefault(name, {})["nozzle_diameter"] = float(nozzle_diam_raw)
+                except ValueError:
+                    pass
+
             data = {
-                "state":         state,
-                "active":        active,
-                "nozzle_temp":   print_data.get("nozzle_temper"),
-                "nozzle_target": print_data.get("nozzle_target_temper"),
-                "bed_temp":      print_data.get("bed_temper"),
-                "bed_target":    print_data.get("bed_target_temper"),
-                "progress":      print_data.get("mc_percent"),
-                "remaining":     print_data.get("mc_remaining_time"),
-                "filename":      print_data.get("subtask_name"),
-                "layer":         print_data.get("layer_num"),
-                "total_layers":  print_data.get("total_layer_num"),
+                "state":          state,
+                "active":         active,
+                "nozzle_temp":    print_data.get("nozzle_temper"),
+                "nozzle_target":  print_data.get("nozzle_target_temper"),
+                "bed_temp":       print_data.get("bed_temper"),
+                "bed_target":     print_data.get("bed_target_temper"),
+                "progress":       print_data.get("mc_percent"),
+                "remaining":      print_data.get("mc_remaining_time"),
+                "filename":       print_data.get("subtask_name"),
+                "layer":          print_data.get("layer_num"),
+                "total_layers":   print_data.get("total_layer_num"),
+                # Filament & nozzle from cache (persists across messages without AMS data)
+                "filament_type":   ams_cache.get(name, {}).get("filament_type"),
+                "filament_brand":  ams_cache.get(name, {}).get("filament_brand"),
+                "filament_color":  ams_cache.get(name, {}).get("filament_color"),
+                "filament_remain": ams_cache.get(name, {}).get("filament_remain"),
+                "nozzle_diameter": ams_cache.get(name, {}).get("nozzle_diameter"),
+                # layer_height not available from Bambu MQTT
             }
             # Publish to cetools MQTT
             mqtt_pub.publish(
@@ -280,19 +356,27 @@ def poll_prusa(conn, mqtt_pub):
             online = raw["status"] is not None
             p      = (raw["status"] or {}).get("printer", {})
             j      = (raw["status"] or {}).get("job", {})
-            job    = raw["job"]
-            active = job is not None and job.get("state") == "PRINTING"
+            job          = raw["job"]
+            active       = job is not None and job.get("state") == "PRINTING"
+            display_name = (job or {}).get("file", {}).get("display_name", "")
+            fname_meta   = parse_filename_meta(display_name)
             data = {
-                "state":         p.get("state"),
-                "active":        active,
-                "nozzle_temp":   p.get("temp_nozzle"),
-                "nozzle_target": p.get("target_nozzle"),
-                "bed_temp":      p.get("temp_bed"),
-                "bed_target":    p.get("target_bed"),
-                "progress":      j.get("progress"),
-                "remaining":     j.get("time_remaining"),
-                "filename":      (job or {}).get("file", {}).get("display_name"),
-                "filament_type": (job or {}).get("file", {}).get("meta", {}).get("filament_type"),
+                "state":          p.get("state"),
+                "active":         active,
+                "nozzle_temp":    p.get("temp_nozzle"),
+                "nozzle_target":  p.get("target_nozzle"),
+                "bed_temp":       p.get("temp_bed"),
+                "bed_target":     p.get("target_bed"),
+                "progress":       j.get("progress"),
+                "remaining":      j.get("time_remaining"),
+                "filename":       display_name,
+                # Prefer API metadata; fall back to filename parsing
+                "filament_type":  (
+                    (job or {}).get("file", {}).get("meta", {}).get("filament_type")
+                    or fname_meta.get("filament_type")
+                ),
+                "layer_height":   fname_meta.get("layer_height"),
+                "nozzle_diameter": fname_meta.get("nozzle_diameter"),
             }
             mqtt_pub.publish(f"{MQTT_PREFIX}/{name}/online",
                              json.dumps({"online": online}), qos=1, retain=True)
