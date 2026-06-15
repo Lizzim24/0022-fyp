@@ -1,88 +1,530 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Digital Twin — LFL & CELab</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- ECharts -->
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Digital Twin — LFL & CELab</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+:root{
+  --bg:      #EFEFEC;
+  --surface: #ffffff;
+  --border:  rgba(0,0,0,0.09);
+  --text:    #111111;
+  --muted:   #6B7280;
+  --green:   #16a34a;
+  --orange:  #ea580c;
+  --red:     #dc2626;
+  --blue:    #2563eb;
+  --accent:  #E84800;
+  --track:   rgba(0,0,0,0.08);
+}
+
+body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
+
+/* ── Nav ─────────────────────────────────────────────── */
+nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 40px;background:var(--bg);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:50;
+}
+.logo{font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;color:var(--text)}
+.tab-nav{display:flex;gap:4px}
+.tab-btn{
+  padding:7px 18px;border:none;border-radius:6px;
+  font-size:12px;letter-spacing:0.06em;text-transform:uppercase;
+  cursor:pointer;transition:all 0.15s;background:transparent;color:var(--muted);
+}
+.tab-btn:hover{background:rgba(0,0,0,0.06);color:var(--text)}
+.tab-btn.active{background:var(--text);color:var(--bg)}
+#last-updated{font-size:11px;color:var(--muted)}
+
+/* ── Panels ──────────────────────────────────────────── */
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ═══════════════════════════════════════════════════════
+   HOME — 3D hero
+═══════════════════════════════════════════════════════ */
+.hero{
+  display:grid;grid-template-columns:340px 1fr;
+  min-height:calc(100vh - 57px);align-items:center;
+  padding:0 0 0 40px;
+}
+.hero-left{padding-right:32px}
+.eyebrow{font-size:10px;letter-spacing:0.2em;text-transform:uppercase;opacity:0.4;margin-bottom:12px}
+h1.home-h1{font-size:clamp(24px,3vw,44px);font-weight:300;line-height:1.1;letter-spacing:-0.02em;margin-bottom:18px}
+h1.home-h1 strong{font-weight:700;display:block}
+.desc{font-size:13px;line-height:1.75;color:#555;margin-bottom:28px;max-width:280px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn-primary{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--accent);color:#fff;
+  font-size:11px;letter-spacing:0.1em;text-transform:uppercase;
+  padding:11px 20px;border:none;cursor:pointer;transition:background 0.2s;
+}
+.btn-primary:hover{background:#c93f00}
+.btn-ghost{
+  display:inline-flex;align-items:center;background:transparent;color:var(--text);
+  font-size:11px;letter-spacing:0.1em;text-transform:uppercase;
+  padding:11px 20px;border:1px solid rgba(0,0,0,0.22);cursor:pointer;
+}
+.btn-ghost:hover{background:rgba(0,0,0,0.05)}
+.home-stats{display:flex;gap:24px;margin-top:36px;padding-top:24px;border-top:1px solid var(--border)}
+.home-stat-num{font-size:26px;font-weight:700;color:var(--accent);line-height:1}
+.home-stat-label{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#999;margin-top:3px}
+.canvas-wrap{position:relative;width:100%;height:calc(100vh - 57px);cursor:grab}
+.canvas-wrap:active{cursor:grabbing}
+#three-canvas{width:100%!important;height:100%!important}
+.hint{position:absolute;bottom:20px;right:20px;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:rgba(0,0,0,0.28);pointer-events:none;transition:opacity 0.8s}
+
+/* VR overlay */
+#vr-overlay{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:200}
+#vr-overlay.active{display:block}
+#vr-canvas{width:100vw;height:100vh;display:block}
+.vr-ui{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:18px 32px;z-index:201}
+.vr-title{color:rgba(255,255,255,0.55);font-size:11px;letter-spacing:0.15em;text-transform:uppercase}
+#exit-vr{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:8px 18px;cursor:pointer}
+#exit-vr:hover{background:rgba(255,255,255,0.16)}
+#vr-status{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.3);font-size:11px;letter-spacing:0.08em;white-space:nowrap}
+
+/* ═══════════════════════════════════════════════════════
+   SHARED DASHBOARD STYLES (all 3 tabs)
+═══════════════════════════════════════════════════════ */
+.dash-panel{padding:28px 40px;min-height:calc(100vh - 57px)}
+
+/* Section header */
+.section-title{
+  font-size:11px;font-weight:700;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--muted);
+  margin:32px 0 14px;padding-bottom:8px;
+  border-bottom:1px solid var(--border);
+}
+.section-title:first-child{margin-top:0}
+
+/* Card */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:20px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* ── Summary bar ─────────────────────────────────────── */
+.summary-bar{display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap}
+.summary-item{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:14px 22px;text-align:center;
+  min-width:105px;box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
+.summary-item.s-print{border-top:3px solid var(--green)}
+.summary-item.s-idle {border-top:3px solid var(--muted)}
+.summary-item.s-free {border-top:3px solid var(--accent)}
+.summary-num{display:block;font-size:28px;font-weight:700;line-height:1.1;color:var(--text)}
+.summary-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+
+/* ── Alert banners ───────────────────────────────────── */
+#alert-area{margin-bottom:20px;display:flex;flex-direction:column;gap:8px}
+.alert-banner{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;border-radius:8px;font-size:12px;font-weight:500;
+}
+.alert-banner.warn{background:#fef3c7;border:1px solid #f59e0b;color:#92400e}
+.alert-banner.info{background:#dbeafe;border:1px solid #3b82f6;color:#1e40af}
+
+/* ── Lab sections ────────────────────────────────────── */
+.lab-section{margin-bottom:24px}
+.lab-label{
+  font-size:11px;font-weight:700;letter-spacing:0.1em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:10px;
+}
+
+/* ── Machine grid ────────────────────────────────────── */
+.machine-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:10px}
+
+/* ── Machine card ────────────────────────────────────── */
+.machine-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:13px 15px;
+  border-left:4px solid rgba(0,0,0,0.12);
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+  transition:border-left-color 0.2s;
+}
+.machine-card.printing{border-left-color:var(--green)}
+.machine-card.paused  {border-left-color:var(--orange)}
+.machine-card.error,
+.machine-card.offline {border-left-color:var(--red)}
+.machine-card.stuck   {border-left-color:#f59e0b;background:#fffbeb}
+.card-name{font-weight:600;font-size:13px;margin-bottom:3px}
+.card-state{font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
+.card-state.printing{color:var(--green)}
+.card-state.paused  {color:var(--orange)}
+.card-state.error,
+.card-state.offline {color:var(--red)}
+.card-state.idle    {color:var(--muted)}
+.card-progress-wrap{height:3px;background:rgba(0,0,0,0.07);border-radius:2px;margin-bottom:7px;overflow:hidden}
+.card-progress-bar{height:100%;background:var(--green);border-radius:2px;transition:width 0.4s}
+.card-meta{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+
+/* ── Analysis: leaderboard ───────────────────────────── */
+.leaderboard-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.lb-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.lb-title{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.lb-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);font-size:12px}
+.lb-row:last-child{border-bottom:none}
+.lb-rank{width:18px;font-weight:700;color:var(--muted)}
+.lb-val{font-weight:600;color:var(--text)}
+
+/* ── Analysis: health scores ─────────────────────────── */
+.health-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.health-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);text-align:center}
+.health-name{font-size:11px;color:var(--muted);margin-bottom:6px}
+.health-score{font-size:22px;font-weight:700;line-height:1}
+.health-score.good{color:var(--green)}
+.health-score.ok  {color:var(--orange)}
+.health-score.bad {color:var(--red)}
+.health-bar{height:3px;border-radius:2px;margin-top:6px;background:var(--track)}
+.health-fill{height:100%;border-radius:2px;transition:width 0.4s}
+
+/* ── Planner ─────────────────────────────────────────── */
+.planner-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04);margin-bottom:16px}
+.planner-result-text{font-size:15px;color:var(--text);line-height:1.6}
+.slider-row{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+.slider-row input[type=range]{width:220px;accent-color:var(--accent)}
+.slider-label{font-size:13px;color:var(--text)}
+select.machine-select{
+  padding:8px 12px;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--text);font-size:13px;cursor:pointer;
+  margin-bottom:14px;
+}
+.wait-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-top:8px}
+.wait-cell{
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:8px 4px;text-align:center;font-size:11px;
+}
+.wait-cell-hour{color:var(--muted);margin-bottom:3px}
+.wait-cell-val{font-weight:700;font-size:13px}
+</style>
 </head>
 <body>
 
-  <!-- ── Header ─────────────────────────────────────── -->
-  <header>
-    <h1>Digital Twin Dashboard</h1>
-    <nav>
-      <button class="tab-btn active" data-tab="live">Live View</button>
-      <button class="tab-btn" data-tab="analysis">Analysis</button>
-      <button class="tab-btn" data-tab="planner">Scenario Planner</button>
-    </nav>
-    <span id="last-updated">Updating...</span>
-  </header>
+<!-- ── Nav ──────────────────────────────────────────── -->
+<nav>
+  <div class="logo" id="logo-btn">Print Lab DT</div>
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="home">Overview</button>
+    <button class="tab-btn" data-tab="live">Live View</button>
+    <button class="tab-btn" data-tab="analysis">Analysis</button>
+    <button class="tab-btn" data-tab="planner">Scenario Planner</button>
+  </div>
+  <span id="last-updated"></span>
+</nav>
 
-  <!-- ── Tab: Live View ─────────────────────────────── -->
-  <section id="tab-live" class="tab-panel active">
-
-    <!-- Summary bar -->
-    <div class="summary-bar">
-      <div class="summary-item">
-        <span class="summary-num" id="count-online">—</span>
-        <span class="summary-label">Online</span>
+<!-- ═══════════════════════════════════════════════════
+     HOME
+═══════════════════════════════════════════════════ -->
+<section id="tab-home" class="tab-panel active">
+  <div class="hero">
+    <div class="hero-left">
+      <p class="eyebrow">UCL Bartlett — CASA</p>
+      <h1 class="home-h1">Fabrication Lab<strong>Digital Twin</strong></h1>
+      <p class="desc">Real-time operational data from LFL and CELab — 13 machines tracked around the clock by Raspberry Pi agents.</p>
+      <div class="actions">
+        <button class="btn-primary" id="enter-vr">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 8.5C2 7.4 2.9 6.5 4 6.5h16c1.1 0 2 .9 2 2v7c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2v-7z"/>
+            <circle cx="8.5" cy="12" r="1.5"/><circle cx="15.5" cy="12" r="1.5"/><path d="M10 12h4"/>
+          </svg>
+          Explore in VR
+        </button>
+        <button class="btn-ghost" id="goto-live-btn">View Live Status →</button>
       </div>
-      <div class="summary-item printing">
-        <span class="summary-num" id="count-printing">—</span>
-        <span class="summary-label">Printing</span>
-      </div>
-      <div class="summary-item idle">
-        <span class="summary-num" id="count-idle">—</span>
-        <span class="summary-label">Idle</span>
-      </div>
-      <div class="summary-item available">
-        <span class="summary-num" id="soonest-free">—</span>
-        <span class="summary-label">Soonest free</span>
+      <div class="home-stats">
+        <div><div class="home-stat-num" id="home-online">—</div><div class="home-stat-label">Online</div></div>
+        <div><div class="home-stat-num" id="home-printing">—</div><div class="home-stat-label">Printing</div></div>
+        <div><div class="home-stat-num" id="home-machines">13</div><div class="home-stat-label">Machines</div></div>
       </div>
     </div>
-
-    <!-- Machine grids -->
-    <div class="lab-section">
-      <h2>LFL</h2>
-      <div class="machine-grid" id="grid-lfl"></div>
+    <div class="canvas-wrap">
+      <canvas id="three-canvas"></canvas>
+      <div class="hint" id="drag-hint">Drag · Scroll to zoom</div>
     </div>
-    <div class="lab-section">
-      <h2>CELab</h2>
-      <div class="machine-grid" id="grid-celab"></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 1 — LIVE VIEW
+═══════════════════════════════════════════════════ -->
+<section id="tab-live" class="tab-panel dash-panel">
+
+  <!-- 1.3 Summary bar -->
+  <div class="summary-bar">
+    <div class="summary-item"><span class="summary-num" id="count-online">—</span><span class="summary-label">Online</span></div>
+    <div class="summary-item s-print"><span class="summary-num" id="count-printing">—</span><span class="summary-label">Printing</span></div>
+    <div class="summary-item s-idle"><span class="summary-num" id="count-idle">—</span><span class="summary-label">Idle</span></div>
+    <div class="summary-item s-free"><span class="summary-num" id="soonest-free">—</span><span class="summary-label">Soonest free</span></div>
+  </div>
+
+  <!-- 1.5 / 1.6 Alerts -->
+  <div id="alert-area"></div>
+
+  <!-- 1.4 LFL -->
+  <p class="section-title">LFL</p>
+  <div class="lab-section"><div class="machine-grid" id="grid-lfl"></div></div>
+
+  <!-- 1.4 CELab -->
+  <p class="section-title">CELab</p>
+  <div class="lab-section"><div class="machine-grid" id="grid-celab"></div></div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 2 — ANALYSIS
+═══════════════════════════════════════════════════ -->
+<section id="tab-analysis" class="tab-panel dash-panel">
+
+  <!-- 2.1 Heatmap -->
+  <p class="section-title">2.1 — Usage Heatmap (by weekday × hour)</p>
+  <div class="card"><div id="chart-heatmap" style="height:280px"></div></div>
+
+  <!-- 2.2 Utilisation trend -->
+  <p class="section-title">2.2 — Utilisation Rate Trend</p>
+  <div class="card"><div id="chart-util" style="height:240px"></div></div>
+
+  <!-- 2.3 Leaderboard -->
+  <p class="section-title">2.3 — Machine Leaderboard</p>
+  <div class="leaderboard-grid">
+    <div class="lb-card">
+      <div class="lb-title">🏆 Highest Utilisation</div>
+      <div id="lb-util"></div>
     </div>
+    <div class="lb-card">
+      <div class="lb-title">📶 Most Offline Events</div>
+      <div id="lb-offline"></div>
+    </div>
+    <div class="lb-card">
+      <div class="lb-title">⚠️ Most Failures</div>
+      <div id="lb-fail"></div>
+    </div>
+  </div>
 
-  </section>
+  <!-- 2.4 Health scores -->
+  <p class="section-title">2.4 — Machine Health Score</p>
+  <div class="health-grid" id="health-grid"></div>
 
-  <!-- ── Tab: Analysis ──────────────────────────────── -->
-  <section id="tab-analysis" class="tab-panel">
-    <h2>Usage Heatmap</h2>
-    <div id="chart-heatmap" style="height:300px;"></div>
-    <h2>Utilisation Rate</h2>
-    <div id="chart-util" style="height:260px;"></div>
-  </section>
+  <!-- 2.5 Filament usage -->
+  <p class="section-title">2.5 — Filament Usage by Machine (relative)</p>
+  <div class="card"><div id="chart-filament-usage" style="height:240px"></div></div>
 
-  <!-- ── Tab: Scenario Planner ──────────────────────── -->
-  <section id="tab-planner" class="tab-panel">
-    <h2>Best Time to Visit</h2>
-    <div id="best-time-result" class="planner-result">Loading...</div>
-    <h2>Capacity Simulator</h2>
+  <!-- 2.6 Filament type distribution -->
+  <p class="section-title">2.6 — Filament Type Distribution</p>
+  <div class="card"><div id="chart-filament-type" style="height:260px"></div></div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════════════
+     TAB 3 — SCENARIO PLANNER
+═══════════════════════════════════════════════════ -->
+<section id="tab-planner" class="tab-panel dash-panel">
+
+  <!-- 3.1 Best time -->
+  <p class="section-title">3.1 — Best Time to Visit This Week</p>
+  <div class="planner-card">
+    <div class="planner-result-text" id="best-time-result">Loading…</div>
+  </div>
+
+  <!-- 3.2 Capacity simulator -->
+  <p class="section-title">3.2 — Capacity Planning Simulator</p>
+  <div class="planner-card">
     <div class="slider-row">
-      <label>Number of machines: <strong id="sim-count">13</strong></label>
+      <span class="slider-label">Number of machines: <strong id="sim-count">13</strong></span>
       <input type="range" id="sim-slider" min="1" max="20" value="13">
     </div>
-    <div id="sim-result" class="planner-result">—</div>
-  </section>
+    <div class="planner-result-text" id="sim-result">—</div>
+  </div>
 
-  <!-- Scripts -->
-  <script src="js/supabase.js"></script>
-  <script src="js/live.js"></script>
-  <script src="js/analysis.js"></script>
-  <script src="js/planner.js"></script>
+  <!-- 3.3 Maintenance window -->
+  <p class="section-title">3.3 — Maintenance Window Suggestion</p>
+  <div class="planner-card">
+    <select class="machine-select" id="maintenance-select">
+      <option value="">Select a machine…</option>
+    </select>
+    <div class="planner-result-text" id="maintenance-result">Select a machine to see the best maintenance window.</div>
+  </div>
 
+  <!-- 3.4 Average wait time -->
+  <p class="section-title">3.4 — Average Wait Time by Hour (weekdays)</p>
+  <div class="planner-card">
+    <div class="planner-result-text" style="margin-bottom:12px" id="wait-intro">Estimated minutes until a machine is free, by time of day.</div>
+    <div class="wait-grid" id="wait-grid"></div>
+  </div>
+
+</section>
+
+<!-- VR overlay -->
+<div id="vr-overlay">
+  <canvas id="vr-canvas"></canvas>
+  <div class="vr-ui">
+    <span class="vr-title">Print Lab — Walkthrough</span>
+    <button id="exit-vr">✕ Exit</button>
+  </div>
+  <div id="vr-status">Drag to look around</div>
+</div>
+
+<script src="js/supabase.js"></script>
+<script src="js/live.js"></script>
+<script src="js/analysis.js"></script>
+<script src="js/planner.js"></script>
+
+<!-- Three.js -->
+<script type="importmap">{"imports":{"three":"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const ORANGE=0xE84800,BLUE=0x1B4FC4,WOOD=0xD4AA70,CONCRETE=0xB2AFA8,DGREY=0x1E1E1E;
+const m=(c,r=0.75,mt=0)=>new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:mt});
+
+function buildLab(scene){
+  const g=new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(22,0.1,16),m(0x888884,0.9)));
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(22,0.1,16),m(0x888884,0.9)); fl.position.set(0,-0.05,1); g.add(fl);
+  const bw=new THREE.Mesh(new THREE.BoxGeometry(22,12,0.15),m(CONCRETE,0.95)); bw.position.set(0,6,-4.2); g.add(bw);
+  const lw=new THREE.Mesh(new THREE.BoxGeometry(0.15,12,16),m(CONCRETE,0.95)); lw.position.set(-11,6,1); g.add(lw);
+  [-7.5,-1.8,3.9,7.8].forEach(x=>{
+    [-3.4,-2.6].forEach(z=>{ const u=new THREE.Mesh(new THREE.BoxGeometry(0.1,6.2,0.1),m(BLUE,0.5,0.4)); u.position.set(x,3.1,z); g.add(u); });
+  });
+  [1.1,3.8,5.7].forEach(y=>{
+    [-3.4,-2.6].forEach(z=>{ const b=new THREE.Mesh(new THREE.BoxGeometry(16,0.13,0.1),m(ORANGE,0.45,0.25)); b.position.set(0.15,y,z); g.add(b); });
+    [-7.5,-1.8,3.9,7.8].forEach(x=>{ const cb=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.13,0.9),m(ORANGE,0.5,0.2)); cb.position.set(x,y,-3.0); g.add(cb); });
+  });
+  [3.83,5.73].forEach(y=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(16,0.07,0.9),m(0xCCCCCC,0.82)); s.position.set(0.15,y,-3.0); g.add(s); });
+  const bench=new THREE.Mesh(new THREE.BoxGeometry(16.2,0.07,2.1),m(WOOD,0.68)); bench.position.set(0.15,1.08,-1.6); g.add(bench);
+  [-7.8,8.1].forEach(x=>{ const p=new THREE.Mesh(new THREE.BoxGeometry(0.06,1.06,2.0),m(WOOD,0.72)); p.position.set(x,0.53,-1.6); g.add(p); });
+  for(let col=0;col<10;col++) for(let row=0;row<2;row++){
+    const tx=-7.0+col*1.6,ty=0.17+row*0.34,tz=-1.7;
+    const tray=new THREE.Mesh(new THREE.BoxGeometry(0.44,0.31,0.58),m(ORANGE,0.6)); tray.position.set(tx,ty,tz); g.add(tray);
+    const inn=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.25,0.50),m(0xBB3300,0.7)); inn.position.set(tx,ty+0.04,tz); g.add(inn);
+  }
+  [-5.8,-2.9,0,2.9,5.8].forEach(px=>{
+    const pg=new THREE.Group();
+    pg.add(new THREE.Mesh(new THREE.BoxGeometry(1.1,1.12,0.9),m(DGREY,0.85)));
+    [-0.51,0.51].forEach(ox=>{
+      const s=new THREE.Mesh(new THREE.BoxGeometry(0.09,1.14,0.09),m(ORANGE,0.42,0.18));
+      s.position.set(ox,0,0); pg.add(s);
+    });
+    [-0.53,0.53].forEach(oy=>{
+      const s=new THREE.Mesh(new THREE.BoxGeometry(1.14,0.09,0.09),m(ORANGE,0.42,0.18));
+      s.position.set(0,oy,0); pg.add(s);
+    });
+    const glass=new THREE.Mesh(new THREE.BoxGeometry(0.96,0.92,0.04),new THREE.MeshStandardMaterial({color:0x080808,roughness:0.05,metalness:0.4,transparent:true,opacity:0.83}));
+    glass.position.set(0,0.03,0.47); pg.add(glass);
+    const bed=new THREE.Mesh(new THREE.BoxGeometry(0.66,0.04,0.6),m(0x2a2a2a,0.9)); bed.position.set(0,-0.32,0.1); pg.add(bed);
+    const disp=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.085,0.02),new THREE.MeshStandardMaterial({color:0x001020,roughness:0.3,emissive:0x003366,emissiveIntensity:0.7}));
+    disp.position.set(0,-0.48,0.47); pg.add(disp);
+    const lbl=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.046,0.015),m(0xCC1100,0.55)); lbl.position.set(0,-0.40,0.456); pg.add(lbl);
+    pg.position.set(px,1.64,-1.58); g.add(pg);
+  });
+  [0xFFFFFF,0xFFDD00,0xCCCCCC,0xFF6600,0x0055FF].forEach((c,i)=>{
+    const sp=new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.24,0.1,20),m(c,0.65)); sp.rotation.x=Math.PI/2; sp.position.set(3.0+i*0.6,5.98,-3.0); g.add(sp);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.13,12),m(0xAAAAAA,0.5,0.3)); hub.rotation.x=Math.PI/2; hub.position.set(3.0+i*0.6,5.98,-3.0); g.add(hub);
+  });
+  [-8,-6.2].forEach(x=>{ const box=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.52,0.42),m(0xC4A06A,0.9)); box.position.set(x,4.06,-2.97); g.add(box); });
+  for(let i=0;i<4;i++){ const cable=new THREE.Mesh(new THREE.TorusGeometry(0.13,0.017,6,16),m(0x111111,0.85)); cable.rotation.x=Math.PI/2; cable.position.set(0.5+i*0.4,4.0,-3.0); g.add(cable); }
+  const ft=new THREE.Mesh(new THREE.BoxGeometry(9,0.065,3.2),m(0x888884,0.75)); ft.position.set(-1,0.765,4.5); g.add(ft);
+  [-3,0,3].forEach(x=>{
+    const seat=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.065,0.54),m(ORANGE,0.75)); seat.position.set(x-1,0.79,3.8); g.add(seat);
+    const back=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.6,0.055),m(ORANGE,0.75)); back.position.set(x-1,1.10,3.55); g.add(back);
+  });
+  scene.add(g);
+}
+
+// Hero renderer
+(function(){
+  const canvas=document.getElementById('three-canvas');
+  const wrap=canvas.parentElement;
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setClearColor(0,0);
+  const scene=new THREE.Scene();
+  const f=9;
+  const cam=new THREE.OrthographicCamera(-f,f,f,-f,0.1,300);
+  scene.add(new THREE.AmbientLight(0xfff8f0,0.6));
+  const sun=new THREE.DirectionalLight(0xffeedd,1.5); sun.position.set(14,20,12); scene.add(sun);
+  const fill=new THREE.DirectionalLight(0xddeeff,0.35); fill.position.set(-12,7,7); scene.add(fill);
+  buildLab(scene);
+  function resize(){
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    renderer.setSize(w,h);
+    const a=w/h;
+    cam.left=-f*a; cam.right=f*a; cam.updateProjectionMatrix();
+  }
+  resize(); window.addEventListener('resize',resize);
+  let drag=false,lx=0,ly=0,rotY=0.65,rotX=0.4,zoom=1;
+  const hint=document.getElementById('drag-hint');
+  canvas.addEventListener('mousedown',e=>{drag=true;lx=e.clientX;ly=e.clientY});
+  window.addEventListener('mouseup',()=>drag=false);
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return; hint.style.opacity='0';
+    rotY+=(e.clientX-lx)*0.007; rotX=Math.max(0.08,Math.min(1.15,rotX+(e.clientY-ly)*0.006));
+    lx=e.clientX; ly=e.clientY;
+  });
+  canvas.addEventListener('wheel',e=>{zoom=Math.max(0.4,Math.min(3.0,zoom+e.deltaY*0.001));e.preventDefault();},{passive:false});
+  let tLx=0,tLy=0;
+  canvas.addEventListener('touchstart',e=>{tLx=e.touches[0].clientX;tLy=e.touches[0].clientY});
+  canvas.addEventListener('touchmove',e=>{
+    hint.style.opacity='0';
+    rotY+=(e.touches[0].clientX-tLx)*0.009; rotX=Math.max(0.08,Math.min(1.15,rotX+(e.touches[0].clientY-tLy)*0.007));
+    tLx=e.touches[0].clientX; tLy=e.touches[0].clientY; e.preventDefault();
+  },{passive:false});
+  (function animate(){
+    requestAnimationFrame(animate);
+    const r=22*zoom;
+    cam.position.set(Math.sin(rotY)*Math.cos(rotX)*r,Math.sin(rotX)*r,Math.cos(rotY)*Math.cos(rotX)*r);
+    cam.lookAt(0,2,0); renderer.render(scene,cam);
+  })();
+})();
+
+// VR
+document.getElementById('enter-vr').addEventListener('click',()=>{
+  document.getElementById('vr-overlay').classList.add('active'); initVR();
+});
+document.getElementById('exit-vr').addEventListener('click',()=>{
+  document.getElementById('vr-overlay').classList.remove('active');
+});
+function initVR(){
+  const canvas=document.getElementById('vr-canvas');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth,innerHeight); renderer.xr.enabled=true;
+  const scene=new THREE.Scene(); scene.background=new THREE.Color(0x111111);
+  const cam=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,100); cam.position.set(0,1.65,7); scene.add(cam);
+  scene.add(new THREE.AmbientLight(0xfff8f0,0.5));
+  const sun=new THREE.DirectionalLight(0xffeedd,1.2); sun.position.set(14,20,12); scene.add(sun);
+  buildLab(scene);
+  if(navigator.xr) navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
+    document.getElementById('vr-status').textContent=ok?'VR detected — use your browser\'s Enter VR button':'Drag to look around';
+  });
+  let yaw=0,isDrag=false,lastX=0;
+  canvas.addEventListener('mousedown',e=>{isDrag=true;lastX=e.clientX});
+  window.addEventListener('mouseup',()=>isDrag=false);
+  window.addEventListener('mousemove',e=>{if(!isDrag)return;yaw-=(e.clientX-lastX)*0.004;lastX=e.clientX;});
+  renderer.setAnimationLoop(()=>{if(!renderer.xr.isPresenting)cam.rotation.y=yaw;renderer.render(scene,cam);});
+  window.addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
+}
+</script>
+
+<!-- Tab switching -->
+<script>
+function switchTab(id){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+id));
+  if(id==='analysis') window.dispatchEvent(new Event('tab-analysis'));
+  if(id==='planner')  window.dispatchEvent(new Event('tab-planner'));
+}
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+document.getElementById('logo-btn').addEventListener('click',()=>switchTab('home'));
+document.getElementById('goto-live-btn').addEventListener('click',()=>switchTab('live'));
+</script>
 </body>
 </html>
