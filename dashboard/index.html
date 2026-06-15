@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Twin — LFL & CELab</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────────── -->
+  <header>
+    <h1>Digital Twin Dashboard</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="live">Live View</button>
+      <button class="tab-btn" data-tab="analysis">Analysis</button>
+      <button class="tab-btn" data-tab="planner">Scenario Planner</button>
+    </nav>
+    <span id="last-updated">Updating...</span>
+  </header>
+
+  <!-- ── Tab: Live View ─────────────────────────────── -->
+  <section id="tab-live" class="tab-panel active">
+
+    <!-- Summary bar -->
+    <div class="summary-bar">
+      <div class="summary-item">
+        <span class="summary-num" id="count-online">—</span>
+        <span class="summary-label">Online</span>
+      </div>
+      <div class="summary-item printing">
+        <span class="summary-num" id="count-printing">—</span>
+        <span class="summary-label">Printing</span>
+      </div>
+      <div class="summary-item idle">
+        <span class="summary-num" id="count-idle">—</span>
+        <span class="summary-label">Idle</span>
+      </div>
+      <div class="summary-item available">
+        <span class="summary-num" id="soonest-free">—</span>
+        <span class="summary-label">Soonest free</span>
+      </div>
+    </div>
+
+    <!-- Machine grids -->
+    <div class="lab-section">
+      <h2>LFL</h2>
+      <div class="machine-grid" id="grid-lfl"></div>
+    </div>
+    <div class="lab-section">
+      <h2>CELab</h2>
+      <div class="machine-grid" id="grid-celab"></div>
+    </div>
+
+  </section>
+
+  <!-- ── Tab: Analysis ──────────────────────────────── -->
+  <section id="tab-analysis" class="tab-panel">
+    <h2>Usage Heatmap</h2>
+    <div id="chart-heatmap" style="height:300px;"></div>
+    <h2>Utilisation Rate</h2>
+    <div id="chart-util" style="height:260px;"></div>
+  </section>
+
+  <!-- ── Tab: Scenario Planner ──────────────────────── -->
+  <section id="tab-planner" class="tab-panel">
+    <h2>Best Time to Visit</h2>
+    <div id="best-time-result" class="planner-result">Loading...</div>
+    <h2>Capacity Simulator</h2>
+    <div class="slider-row">
+      <label>Number of machines: <strong id="sim-count">13</strong></label>
+      <input type="range" id="sim-slider" min="1" max="20" value="13">
+    </div>
+    <div id="sim-result" class="planner-result">—</div>
+  </section>
+
+  <!-- Scripts -->
+  <script src="js/supabase.js"></script>
+  <script src="js/live.js"></script>
+  <script src="js/analysis.js"></script>
+  <script src="js/planner.js"></script>
+
+</body>
+</html>

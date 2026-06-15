@@ -1,0 +1,205 @@
+/* ── Reset & Base ───────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0f1117;
+  --surface:   #1a1d27;
+  --border:    #2a2d3a;
+  --text:      #e2e8f0;
+  --muted:     #8892a4;
+  --green:     #22c55e;
+  --orange:    #f97316;
+  --red:       #ef4444;
+  --grey:      #475569;
+  --blue:      #3b82f6;
+  --accent:    #6366f1;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 28px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+header h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+nav { display: flex; gap: 4px; }
+
+.tab-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.tab-btn:hover  { background: var(--border); color: var(--text); }
+.tab-btn.active { background: var(--accent); color: #fff; }
+
+#last-updated {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── Tab panels ─────────────────────────────────────── */
+.tab-panel { display: none; padding: 24px 28px; }
+.tab-panel.active { display: block; }
+
+/* ── Summary bar ────────────────────────────────────── */
+.summary-bar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.summary-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 22px;
+  text-align: center;
+  min-width: 100px;
+}
+.summary-item.printing { border-color: var(--green); }
+.summary-item.idle     { border-color: var(--grey);  }
+.summary-item.available{ border-color: var(--blue);  }
+
+.summary-num {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.summary-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Lab sections ───────────────────────────────────── */
+.lab-section { margin-bottom: 32px; }
+.lab-section h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+
+/* ── Machine grid ───────────────────────────────────── */
+.machine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* ── Machine card ───────────────────────────────────── */
+.machine-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--grey);
+  transition: border-color 0.2s;
+}
+.machine-card.printing { border-left-color: var(--green); }
+.machine-card.paused   { border-left-color: var(--orange); }
+.machine-card.error,
+.machine-card.offline  { border-left-color: var(--red); }
+.machine-card.idle     { border-left-color: var(--grey); }
+
+.card-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.card-state {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.card-state.printing { color: var(--green); }
+.card-state.paused   { color: var(--orange); }
+.card-state.error,
+.card-state.offline  { color: var(--red); }
+.card-state.idle     { color: var(--muted); }
+
+/* Progress bar */
+.card-progress-wrap {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.card-progress-bar {
+  height: 100%;
+  background: var(--green);
+  border-radius: 2px;
+  transition: width 0.4s;
+}
+
+.card-meta {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.card-meta span { display: block; }
+
+/* ── Analysis tab ───────────────────────────────────── */
+#tab-analysis h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+}
+#tab-analysis h2:first-child { margin-top: 0; }
+
+/* ── Planner tab ────────────────────────────────────── */
+.planner-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  font-size: 15px;
+  min-height: 60px;
+}
+
+.slider-row {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.slider-row input[type=range] {
+  width: 240px;
+  accent-color: var(--accent);
+}
