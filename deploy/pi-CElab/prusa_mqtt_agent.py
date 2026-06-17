@@ -36,7 +36,8 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger(__name__)
 
 prev_state  = {}  # name -> {"state": str, "online": bool, "active": bool}
-machine_ids = {}  # name -> UUID (loaded from DB)
+machine_ids         = {}  # name -> UUID (loaded from DB)
+last_print_progress = {}  # name -> last known print progress while PRINTING
 
 
 # ── Database connection ───────────────────────────────────────
@@ -174,6 +175,25 @@ def insert_event(conn, name, event_type, severity="info", description="", metada
     conn.commit()
     log.info(f"  [EVENT] {name} | {event_type} | {description}")
 
+
+
+# ── Log manual print stop event ───────────────────────────────
+def log_print_stop_event(conn, name, progress):
+    """PRINTING → IDLE/PAUSED 时记录停止事件，含停止时进度"""
+    mid = machine_ids.get(name)
+    if not mid:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO machine_events
+                  (machine_id, event_type, severity, start_time, description, progress_at_stop)
+                VALUES (%s, 'print_stopped_manual', 'warning', NOW(), %s, %s)
+            """, (mid, f"Print manually stopped at {progress}%", progress))
+        conn.commit()
+        log.info(f"  {name}: print_stopped_manual at {progress}%")
+    except Exception as e:
+        log.error(f"  {name}: log_print_stop_event failed — {e}")
 
 # ── Event detection ───────────────────────────────────────────
 def detect_events(conn, name, status_data, job_data, online):
@@ -345,7 +365,21 @@ def run():
 
                 # Write to DB
                 insert_status_log(conn, name, data["status"], data["job"], online)
+                prev_before = prev_state.get(name, {})
                 detect_events(conn, name, data["status"], data["job"], online)
+                # Track progress while printing (for weighted stop detection)
+                job_data = data["job"]
+                if job_data and job_data.get("state") == "PRINTING":
+                    prog = job_data.get("progress")
+                    if prog is not None:
+                        last_print_progress[name] = prog
+                # Detect PRINTING → IDLE/PAUSED: log weighted stop event
+                prev_s = (prev_before or {}).get("state", "").upper()
+                curr_s = ((data["status"] or {}).get("printer", {}).get("state") or "").upper()
+                if prev_s == "PRINTING" and curr_s in ("IDLE", "FINISH", "STOPPED", "PAUSED"):
+                    stopped_at = last_print_progress.pop(name, None)
+                    if stopped_at is not None:
+                        log_print_stop_event(conn, name, stopped_at)
 
             except psycopg2.OperationalError:
                 log.warning("DB disconnected, reconnecting...")

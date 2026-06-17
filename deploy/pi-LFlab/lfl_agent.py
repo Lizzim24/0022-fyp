@@ -35,6 +35,7 @@ last_connectivity = {}  # name -> True/False, dedup offline events
 prev_state        = {}  # name -> last known state dict
 bambu_clients     = {}  # name -> paho client
 ams_cache         = {}  # name -> {"filament_type": str} from last AMS payload
+last_print_progress = {}  # name -> last known print progress
 
 
 def get_db():
@@ -100,6 +101,22 @@ def ensure_machines(conn):
     conn.commit()
     log.info(f"Machines synced: {list(machine_ids.keys())}")
 
+def log_print_stop_event(conn, name, progress):
+    """Called when the machine switches from PRINTING to IDLE/PAUSED, this function logs the stop event."""
+    mid = machine_ids.get(name)
+    if not mid:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO machine_events
+                  (machine_id, event_type, severity, start_time, description, progress_at_stop)
+                VALUES (%s, 'print_stopped_manual', 'warning', NOW(), %s, %s)
+            """, (mid, f"Print manually stopped at {progress}%", progress))
+        conn.commit()
+        log.info(f"  {name}: print_stopped_manual at {progress}%")
+    except Exception as e:
+        log.error(f"  {name}: log_print_stop_event failed — {e}")
 
 # ── Write status log ──────────────────────────────────────────
 def insert_status_log(conn, name, data, online):
@@ -270,6 +287,10 @@ def connect_bambu(cfg, mqtt_pub, conn):
                 "nozzle_diameter": ams_cache.get(name, {}).get("nozzle_diameter"),
                 # layer_height not available from Bambu MQTT
             }
+
+            if state.upper() == 'PRINTING' and data.get('progress') is not None:
+                last_print_progress[name] = data['progress']
+            
             # Publish to cetools MQTT
             mqtt_pub.publish(
                 f"{MQTT_PREFIX}/{name}/status",
@@ -283,10 +304,20 @@ def connect_bambu(cfg, mqtt_pub, conn):
             if state_changed or (now - last_db_write.get(name, 0)) >= 30:
                 insert_status_log(conn, name, data, True)
                 detect_events(conn, name, data, True)
+
+                # Detect transition from PRINTING to IDLE/FINISH/PAUSED and log print_stopped_manual event
+                prev_s = prev.get("state", "").upper()
+                curr_s = state.upper()
+                if prev_s == "PRINTING" and curr_s in ("IDLE", "FINISH", "PAUSED", "PAUSE", "UNKNOWN"):
+                    stopped_at = last_print_progress.pop(name, None)
+                    if stopped_at is not None:
+                        log_print_stop_event(conn, name, stopped_at)
+
                 last_db_write[name] = now
             log.info(f"  {name}: {state} {data.get('progress', '')}%")
-        except Exception as e:
-            log.error(f"  {name} message error: {e}")
+        except Exception:
+            # Ensure any unexpected errors in the MQTT handler are logged and do not crash the client loop
+            log.exception(f"  {name}: Error in MQTT message handler")
 
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
@@ -378,6 +409,11 @@ def poll_prusa(conn, mqtt_pub):
                 "layer_height":   fname_meta.get("layer_height"),
                 "nozzle_diameter": fname_meta.get("nozzle_diameter"),
             }
+
+            # Detect manual stop event for Prusa printers
+            if (data.get('state') or '').upper() == 'PRINTING' and data.get('progress') is not None:
+                last_print_progress[name] = data['progress']
+
             mqtt_pub.publish(f"{MQTT_PREFIX}/{name}/online",
                              json.dumps({"online": online}), qos=1, retain=True)
             if online:
@@ -388,6 +424,13 @@ def poll_prusa(conn, mqtt_pub):
                 )
             insert_status_log(conn, name, data, online)
             detect_events(conn, name, data, online)
+            # Detect transition from PRINTING to IDLE/FINISH/PAUSED and log print_stopped_manual event
+            prev_s = (prev_state.get(name) or {}).get("state", "").upper()
+            curr_s = (data.get("state") or "").upper()
+            if prev_s == "PRINTING" and curr_s in ("IDLE", "FINISH", "PAUSED", "PAUSE", "UNKNOWN"):
+                stopped_at = last_print_progress.pop(name, None)
+                if stopped_at is not None:
+                    log_print_stop_event(conn, name, stopped_at)
         except psycopg2.OperationalError:
             log.warning("DB disconnected, reconnecting...")
             try:
