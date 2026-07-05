@@ -6,36 +6,22 @@
 
 // MKR1010 13 * data pin
 const uint8_t pins[NUM_PRINTERS] = {
-  2,
-  3,
-  4,
-  5,
-  6,
-  7,
-  8,
-  9,
-  10,
-  A0,
-  A1,
-  A2,
-  A3
+  4,   // CoreOne-3
+  5,   // H2D-01
+  6,   // H2D-02
+  7,   // H2D-03
+  8,   // H2D-04
+  9,   // XL-01
+  10,  // XL-02
+  2,   // X1C-02
+  3,   // X1C-01
+  A3,  // CoreOne-2
+  A2,  // CoreOne-6
+  A1,  // CoreOne-4
+  A0   // CoreOne-5
 };
 
-Adafruit_NeoPixel strips[NUM_PRINTERS] = {
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 2, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 3, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 4, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 5, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 6, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 7, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 8, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 9, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, 10, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, A0, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, A1, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, A2, NEO_GRB + NEO_KHZ800),
-  Adafruit_NeoPixel(LEDS_PER_PRINTER, A3, NEO_GRB + NEO_KHZ800)
-};
+Adafruit_NeoPixel strips[NUM_PRINTERS];
 
 uint32_t getColor(uint8_t state, Adafruit_NeoPixel &strip) {
   switch (state) {
@@ -82,6 +68,7 @@ void startSignal() {
 
 void setup() {
   for (uint8_t p = 0; p < NUM_PRINTERS; p++) {
+    strips[p] = Adafruit_NeoPixel(LEDS_PER_PRINTER, pins[p], NEO_GRB + NEO_KHZ800);
     strips[p].begin();
     strips[p].setBrightness(BRIGHTNESS);
     strips[p].show();
