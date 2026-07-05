@@ -5,17 +5,27 @@
 let plannerInited = false;
 let plannerHeatmap = null; // weekday×hour usage rates, cached for reuse
 
-// ── Build usage table from logs ────────────────────────────────────────────────
+// Machine count used to be hardcoded to 13 in several places on this site;
+// pull it live from Supabase instead (live.js also caches it on window.LAB_MACHINE_COUNT).
+async function getMachineCount() {
+  if (window.LAB_MACHINE_COUNT) return window.LAB_MACHINE_COUNT;
+  const { count } = await db.from('machines').select('id', { count: 'exact', head: true });
+  return count || 13;
+}
+
+// ── Build usage table via the usage_by_weekday_hour() RPC (added 5 July) ──────
+// Previously this pulled raw machine_status_logs rows with .limit(80000) and
+// no .order() — at current data volume (~24k rows/day system-wide) a 28-day
+// window holds 650k+ rows, so the client only ever saw an arbitrary,
+// unordered 80k-row slice of it. That's what made 3.1/3.2 look like "not
+// enough data" even though the underlying history is there. The RPC
+// aggregates server-side and always returns at most 168 rows.
 async function fetchUsageTable() {
   if (plannerHeatmap) return plannerHeatmap;
 
   const since = new Date(Date.now() - 28 * 24 * 3600_000).toISOString();
-  const { data } = await db
-    .from('machine_status_logs')
-    .select('timestamp, active, job_remaining, machine_id')
-    .gte('timestamp', since)
-    .limit(80000);
-
+  const { data, error } = await db.rpc('usage_by_weekday_hour', { since });
+  if (error) console.error('fetchUsageTable RPC error', error);
   if (!data || !data.length) return null;
 
   const total = Array.from({length:7}, () => Array(24).fill(0));
@@ -24,15 +34,10 @@ async function fetchUsageTable() {
   const rem_cnt = Array.from({length:7}, () => Array(24).fill(0));
 
   for (const row of data) {
-    const d  = new Date(row.timestamp);
-    const wd = d.getDay();
-    const hr = d.getHours();
-    total[wd][hr]++;
-    if (row.active) active_cnt[wd][hr]++;
-    if (row.job_remaining > 0) {
-      rem_sum[wd][hr] += row.job_remaining;
-      rem_cnt[wd][hr]++;
-    }
+    total[row.weekday][row.hour]      = row.total;
+    active_cnt[row.weekday][row.hour] = row.active_count;
+    rem_sum[row.weekday][row.hour]    = row.rem_sum;
+    rem_cnt[row.weekday][row.hour]    = row.rem_cnt;
   }
 
   plannerHeatmap = { total, active_cnt, rem_sum, rem_cnt };
@@ -92,8 +97,8 @@ async function initCapacitySimulator() {
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
   const { data } = await db
     .from('machine_daily_summary')
-    .select('total_active_minutes, summary_date')
-    .gte('summary_date', since);
+    .select('total_active_minutes, date')
+    .gte('date', since);
 
   // Fallback demand if no daily_summary data
   let avgDailyDemandMins = 120; // conservative fallback: 2h/machine/day
@@ -101,13 +106,19 @@ async function initCapacitySimulator() {
     // Sum total_active_minutes across all machines per day, then average
     const byDate = {};
     for (const row of data) {
-      byDate[row.summary_date] = (byDate[row.summary_date] || 0) + (row.total_active_minutes || 0);
+      byDate[row.date] = (byDate[row.date] || 0) + (row.total_active_minutes || 0);
     }
     const days = Object.values(byDate);
     avgDailyDemandMins = days.reduce((a, b) => a + b, 0) / days.length;
   }
 
   const AVAILABLE_MINS_PER_DAY = 9 * 60; // 9am–6pm = 9h per machine
+
+  // Initialise slider from the real machine count instead of a hardcoded 13
+  const machineCount = await getMachineCount();
+  slider.max = Math.max(20, machineCount + 5);
+  slider.value = machineCount;
+  countEl.textContent = machineCount;
 
   function updateSim() {
     const n = parseInt(slider.value);
@@ -155,26 +166,21 @@ async function initMaintenanceWindow() {
     result.textContent = 'Analysing…';
 
     const since = new Date(Date.now() - 28 * 24 * 3600_000).toISOString();
-    const { data } = await db
-      .from('machine_status_logs')
-      .select('timestamp, active')
-      .eq('machine_id', mid)
-      .gte('timestamp', since)
-      .limit(30000);
+    const { data, error } = await db.rpc('usage_by_weekday_hour', { since, machine_filter: mid });
+    if (error) console.error('initMaintenanceWindow RPC error', error);
 
-    if (!data || data.length < 10) {
+    const totalSamples = (data || []).reduce((a, r) => a + Number(r.total), 0);
+    if (!data || totalSamples < 10) {
       result.textContent = 'Not enough data for this machine yet.';
       return;
     }
 
-    // Build weekday × hour usage for this machine
+    // Build weekday × hour usage for this machine from the aggregated rows
     const total_m = Array.from({length:7}, () => Array(24).fill(0));
     const active_m = Array.from({length:7}, () => Array(24).fill(0));
     for (const row of data) {
-      const d = new Date(row.timestamp);
-      const wd = d.getDay(), hr = d.getHours();
-      total_m[wd][hr]++;
-      if (row.active) active_m[wd][hr]++;
+      total_m[row.weekday][row.hour] = row.total;
+      active_m[row.weekday][row.hour] = row.active_count;
     }
 
     // Find lowest-usage 2-hour window Mon–Fri 8:00–20:00
@@ -215,7 +221,7 @@ async function initWaitTime() {
 
   // For each working hour 8–20, estimate expected wait:
   // avg_wait ≈ (active_fraction × avg_job_remaining_when_active) or 0 if idle
-  const TOTAL_MACHINES = 13;
+  const TOTAL_MACHINES = await getMachineCount(); // was hardcoded to 13
   const cells = [];
 
   for (let hr = 8; hr <= 19; hr++) {
@@ -254,6 +260,90 @@ async function initWaitTime() {
   grid.innerHTML = cells.join('');
 }
 
+// ── 3.2 Guess Who's Next Free — a playful spin on the wait-time estimate ──────
+// Shows the machines currently printing (times hidden), visitor picks who
+// they think will finish first, then reveals the real remaining times.
+function fmt_mins_left(secs) {
+  const m = Math.round(secs / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m/60)}h ${m%60}m`;
+}
+
+async function fetchBusyMachines() {
+  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data } = await db
+    .from('machine_status_logs')
+    .select('machine_id, job_remaining, state, online, timestamp, machines(name)')
+    .gte('timestamp', since)
+    .order('timestamp', { ascending: false });
+
+  if (!data) return [];
+  const seen = new Set(), busy = [];
+  for (const row of data) {
+    if (seen.has(row.machine_id)) continue;
+    seen.add(row.machine_id);
+    if (row.online && ['PRINTING','BUSY'].includes((row.state||'').toUpperCase()) && row.job_remaining > 0) {
+      busy.push({ id: row.machine_id, name: row.machines?.name || row.machine_id, remaining: row.job_remaining });
+    }
+  }
+  return busy;
+}
+
+function renderGuessPrompt(card, machines) {
+  let guessId = null;
+  card.innerHTML = `
+    <div class="planner-result-text" style="margin-bottom:12px">Which of these ${machines.length} machines do you think will free up <strong>first</strong>?</div>
+    <div class="wait-grid" id="guess-choices" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+      ${machines.map(m => `<div class="wait-cell" data-gid="${m.id}" style="cursor:pointer"><div class="wait-cell-hour">${m.name}</div><div class="wait-cell-val" style="color:var(--muted)">?</div></div>`).join('')}
+    </div>
+    <button class="btn-ghost" id="guess-reveal" style="margin-top:14px;padding:8px 16px;font-size:10px" disabled>Pick a machine first</button>
+  `;
+
+  const choiceEls = card.querySelectorAll('#guess-choices .wait-cell');
+  const revealBtn = card.querySelector('#guess-reveal');
+  choiceEls.forEach(el => el.addEventListener('click', () => {
+    guessId = el.dataset.gid;
+    choiceEls.forEach(c => c.style.outline = '');
+    el.style.outline = '2px solid var(--accent)';
+    revealBtn.disabled = false;
+    revealBtn.textContent = 'Reveal the answer →';
+  }));
+
+  revealBtn.addEventListener('click', () => {
+    const ranked = [...machines].sort((a, b) => a.remaining - b.remaining);
+    const winner = ranked[0];
+    const correct = guessId === winner.id;
+    card.innerHTML = `
+      <div class="planner-result-text" style="margin-bottom:10px">
+        ${correct ? '🎉 Correct!' : '❌ Not quite —'} <strong>${winner.name}</strong> frees up first, in <strong>${fmt_mins_left(winner.remaining)}</strong>.
+      </div>
+      <div class="wait-grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+        ${ranked.map((m,i) => `<div class="wait-cell"${m.id===guessId ? ' style="outline:2px solid var(--accent)"' : ''}>
+          <div class="wait-cell-hour">${i===0?'🥇 ':''}${m.name}</div>
+          <div class="wait-cell-val" style="color:${i===0?'var(--green)':'var(--text)'}">${fmt_mins_left(m.remaining)}</div>
+        </div>`).join('')}
+      </div>
+      <button class="btn-ghost" id="guess-again" style="margin-top:14px;padding:8px 16px;font-size:10px">🔄 Play again</button>
+    `;
+    card.querySelector('#guess-again').addEventListener('click', () => initGuessGame(true));
+  });
+}
+
+async function initGuessGame(forceRefresh) {
+  const card = document.getElementById('guess-game-card');
+  if (!card) return;
+  if (!forceRefresh) card.innerHTML = '<div class="planner-result-text">Loading current activity…</div>';
+
+  const machines = await fetchBusyMachines();
+  if (machines.length < 2) {
+    card.innerHTML = `<div class="planner-result-text">Not enough machines printing right now to play — check back when a few are busy at once.</div>`;
+    return;
+  }
+  // Cap at 6 so the guessing grid stays readable
+  const pool = machines.length > 6 ? machines.sort(() => Math.random()-0.5).slice(0,6) : machines;
+  renderGuessPrompt(card, pool);
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function initPlanner() {
   if (plannerInited) return;
@@ -261,6 +351,7 @@ async function initPlanner() {
 
   await Promise.all([
     initBestTime(),
+    initGuessGame(),
     initCapacitySimulator(),
     initMaintenanceWindow(),
     initWaitTime(),

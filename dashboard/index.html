@@ -42,6 +42,16 @@ nav{
 .tab-btn:hover{background:rgba(0,0,0,0.06);color:var(--text)}
 .tab-btn.active{background:var(--text);color:var(--bg)}
 #last-updated{font-size:11px;color:var(--muted)}
+.nav-right{display:flex;align-items:center;gap:16px}
+#mode-toggle{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 6px;border-radius:20px;border:1px solid rgba(0,0,0,0.16);
+  font-size:10px;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;
+  background:var(--surface);color:var(--muted);
+}
+#mode-toggle .mode-pill{padding:4px 10px;border-radius:14px;transition:all 0.15s}
+#mode-toggle .mode-pill.active{background:var(--text);color:var(--bg)}
+.staff-note{font-size:10px;color:var(--muted);margin:-6px 0 14px;font-style:italic}
 
 /* ── Panels ──────────────────────────────────────────── */
 .tab-panel{display:none}
@@ -86,6 +96,21 @@ h1.home-h1 strong{font-weight:700;display:block}
 .canvas-wrap:active{cursor:grabbing}
 #three-canvas{width:100%!important;height:100%!important}
 .hint{position:absolute;bottom:20px;right:20px;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:rgba(0,0,0,0.28);pointer-events:none;transition:opacity 0.8s}
+
+/* ── Hero hover tooltip (hover a printer/laser cutter in the LFL model) ── */
+.tip{position:fixed;pointer-events:none;z-index:60;background:rgba(12,12,12,0.92);color:#fff;font-size:11px;padding:8px 13px;opacity:0;transition:opacity 0.12s;white-space:nowrap;border-left:3px solid #888;border-radius:2px}
+.tip.bambu{border-left-color:#1B4FC4}
+.tip.prusa{border-left-color:#E84800}
+.tip.laser{border-left-color:#2A7A3A}
+.tip.broken{border-left-color:#DD2222}
+.tip.on{opacity:1}
+.tip .tn{font-weight:700;font-size:12px;margin-bottom:2px}
+.tip .td{opacity:0.55;font-size:10px}
+
+/* ── Minimap (top-view layout, click to enlarge) ─────────── */
+.mm{position:absolute;bottom:44px;right:16px;width:150px;background:rgba(255,255,255,0.86);backdrop-filter:blur(8px);border:1px solid rgba(0,0,0,0.1);border-radius:3px;padding:8px;cursor:zoom-in;transition:width 0.2s,transform 0.2s;z-index:10}
+.mm-t{font-size:8.5px;letter-spacing:0.09em;text-transform:uppercase;color:#aaa;margin-bottom:5px}
+.mm.expanded{position:fixed;top:50%;right:auto;left:50%;bottom:auto;transform:translate(-50%,-50%);width:min(560px,86vw);cursor:zoom-out;z-index:210;box-shadow:0 12px 40px rgba(0,0,0,0.28)}
 
 /* VR overlay */
 #vr-overlay{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:200}
@@ -162,6 +187,10 @@ h1.home-h1 strong{font-weight:700;display:block}
 .machine-card.paused  {border-left-color:var(--orange)}
 .machine-card.error,
 .machine-card.offline {border-left-color:var(--red)}
+.machine-card.attention{border-left-color:#f59e0b;background:#fffbeb}
+.machine-card.finished {border-left-color:var(--blue)}
+.machine-card.stopped  {border-left-color:#f59e0b}
+.machine-card.preparing{border-left-color:var(--blue)}
 .machine-card.stuck   {border-left-color:#f59e0b;background:#fffbeb}
 .card-name{font-weight:600;font-size:13px;margin-bottom:3px}
 .card-state{font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px}
@@ -169,6 +198,10 @@ h1.home-h1 strong{font-weight:700;display:block}
 .card-state.paused  {color:var(--orange)}
 .card-state.error,
 .card-state.offline {color:var(--red)}
+.card-state.attention{color:#b45309}
+.card-state.finished {color:var(--blue)}
+.card-state.stopped  {color:#b45309}
+.card-state.preparing{color:var(--blue)}
 .card-state.idle    {color:var(--muted)}
 .card-progress-wrap{height:3px;background:rgba(0,0,0,0.07);border-radius:2px;margin-bottom:7px;overflow:hidden}
 .card-progress-bar{height:100%;background:var(--green);border-radius:2px;transition:width 0.4s}
@@ -212,6 +245,28 @@ select.machine-select{
 }
 .wait-cell-hour{color:var(--muted);margin-bottom:3px}
 .wait-cell-val{font-weight:700;font-size:13px}
+
+/* ── Machine trading card (click a Live View card) ──────── */
+.machine-card{cursor:pointer}
+.tc-overlay{display:none;position:fixed;inset:0;background:rgba(10,10,10,0.6);z-index:150;align-items:center;justify-content:center;padding:20px}
+.tc-overlay.active{display:flex}
+.tc-card{
+  width:100%;max-width:340px;border-radius:18px;padding:26px;color:#fff;position:relative;
+  background:linear-gradient(165deg,#181818,#2b2b2b);
+  box-shadow:0 24px 70px rgba(0,0,0,0.5);border-top:4px solid #888;
+}
+.tc-card.brand-bambu{border-top-color:#1B4FC4}
+.tc-card.brand-prusa{border-top-color:#E84800}
+.tc-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.1);border:none;color:#fff;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1}
+.tc-close:hover{background:rgba(255,255,255,0.2)}
+.tc-eyebrow{font-size:10px;letter-spacing:0.18em;text-transform:uppercase;opacity:0.45;margin-bottom:6px}
+.tc-name{font-size:24px;font-weight:800;letter-spacing:-0.01em;margin-bottom:2px}
+.tc-type{font-size:11px;text-transform:uppercase;letter-spacing:0.07em;opacity:0.55;margin-bottom:22px}
+.tc-stats{display:flex;flex-direction:column;gap:14px;margin-bottom:14px}
+.tc-stat{border-top:1px solid rgba(255,255,255,0.12);padding-top:11px;display:flex;justify-content:space-between;align-items:baseline}
+.tc-stat-label{font-size:11px;text-transform:uppercase;letter-spacing:0.05em;opacity:0.55}
+.tc-stat-val{font-size:19px;font-weight:700;color:var(--accent)}
+.tc-footer{font-size:10px;opacity:0.4;text-align:center;margin-top:6px}
 </style>
 </head>
 <body>
@@ -225,7 +280,13 @@ select.machine-select{
     <button class="tab-btn" data-tab="analysis">Analysis</button>
     <button class="tab-btn" data-tab="planner">Scenario Planner</button>
   </div>
-  <span id="last-updated"></span>
+  <div class="nav-right">
+    <span id="last-updated"></span>
+    <div id="mode-toggle" title="Visitor mode shows the exhibition-friendly view. Staff mode adds maintenance and diagnostics tools.">
+      <span class="mode-pill" data-mode="visitor">Visitor</span>
+      <span class="mode-pill" data-mode="staff">Staff</span>
+    </div>
+  </div>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════
@@ -236,7 +297,7 @@ select.machine-select{
     <div class="hero-left">
       <p class="eyebrow">UCL Bartlett — CASA</p>
       <h1 class="home-h1">Fabrication Lab<strong>Digital Twin</strong></h1>
-      <p class="desc">Real-time operational data from LFL and CELab — 13 machines tracked around the clock by Raspberry Pi agents.</p>
+      <p class="desc">Real-time operational data from LFL and CELab — <span id="home-machines-inline">—</span> machines tracked around the clock by Raspberry Pi agents.</p>
       <div class="lab-toggle">
         <button class="lab-btn active" id="btn-lfl">LFL</button>
         <button class="lab-btn" id="btn-celab">CELab</button>
@@ -254,15 +315,95 @@ select.machine-select{
       <div class="home-stats">
         <div><div class="home-stat-num" id="home-online">—</div><div class="home-stat-label">Online</div></div>
         <div><div class="home-stat-num" id="home-printing">—</div><div class="home-stat-label">Printing</div></div>
-        <div><div class="home-stat-num" id="home-machines">13</div><div class="home-stat-label">Machines</div></div>
+        <div><div class="home-stat-num" id="home-machines">—</div><div class="home-stat-label">Machines</div></div>
       </div>
     </div>
     <div class="canvas-wrap">
       <canvas id="three-canvas"></canvas>
       <div class="hint" id="drag-hint">Drag · Scroll to zoom</div>
+
+      <!-- Minimaps — top-view layout, click to enlarge. Only one is shown at
+           a time (matching whichever lab is toggled on above). -->
+      <div class="mm" id="mm-lfl">
+        <div class="mm-t">Top View — door wall removed (open side)</div>
+        <svg viewBox="0 0 220 120" style="width:100%" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="1" width="218" height="118" fill="none" stroke="#ddd" stroke-width="1"/>
+          <rect x="2" y="2" width="216" height="3" fill="#A8CCEE" opacity="0.6"/>
+          <text x="110" y="9" fill="#7AA" font-size="4.5" text-anchor="middle">window wall</text>
+          <text x="110" y="116" fill="#bbb" font-size="4.5" text-anchor="middle">open / door side</text>
+          <text x="6" y="60" fill="#ccc" font-size="5" text-anchor="middle" transform="rotate(-90,6,60)">wall</text>
+          <rect x="208" y="25" width="4" height="20" fill="none" stroke="#999" stroke-width="1" stroke-dasharray="2,1"/>
+          <text x="215" y="38" fill="#999" font-size="4.5" text-anchor="middle" transform="rotate(90,215,38)">steel door</text>
+          <rect x="170" y="2" width="20" height="10" fill="#2A7A3A" rx="1" opacity="0.8"/>
+          <text x="180" y="9" fill="white" font-size="3.5" text-anchor="middle">Laser</text>
+          <rect x="110" y="2" width="13" height="10" fill="#222" rx="1" opacity="0.8"/>
+          <text x="116" y="9" fill="#aaa" font-size="3" text-anchor="middle">cab</text>
+          <rect x="78" y="2" width="29" height="10" fill="#1B4FC4" rx="1" opacity="0.85"/>
+          <text x="92" y="9" fill="white" font-size="3.8" text-anchor="middle">H2D×4</text>
+          <rect x="58" y="2" width="16" height="10" fill="#E84800" rx="1" opacity="0.85"/>
+          <text x="66" y="9" fill="white" font-size="3.5" text-anchor="middle">XL×2</text>
+          <rect x="38" y="2" width="16" height="10" fill="#888" rx="1" opacity="0.8"/>
+          <text x="46" y="9" fill="white" font-size="3" text-anchor="middle">silver eq.</text>
+          <rect x="13" y="2" width="22" height="10" fill="#222" rx="1" opacity="0.8"/>
+          <text x="24" y="9" fill="#aaa" font-size="3" text-anchor="middle">cab×2</text>
+          <rect x="155" y="50" width="36" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="173" y="60" fill="#665" font-size="3.5" text-anchor="middle">2 tables</text>
+          <rect x="92" y="50" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.55"/>
+          <text x="102" y="60" fill="#665" font-size="3.2" text-anchor="middle">big table</text>
+          <rect x="64" y="50" width="14" height="16" fill="#555" rx="1" opacity="0.8"/>
+          <text x="71" y="60" fill="white" font-size="3.2" text-anchor="middle">X1C×2</text>
+          <rect x="14" y="50" width="32" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="30" y="60" fill="#665" font-size="3.2" text-anchor="middle">2 tables</text>
+          <rect x="2" y="50" width="10" height="16" fill="#222" rx="1" opacity="0.8"/>
+          <rect x="160" y="100" width="30" height="16" fill="#EEE8D8" rx="1" stroke="#ccc" stroke-width="0.5"/>
+          <text x="175" y="110" fill="#888" font-size="3.2" text-anchor="middle">cab+CoreOne</text>
+          <rect x="128" y="100" width="20" height="16" fill="#9AABB0" rx="1" opacity="0.7"/>
+          <text x="138" y="110" fill="white" font-size="3" text-anchor="middle">bins</text>
+          <rect x="92" y="100" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="102" y="110" fill="#665" font-size="3" text-anchor="middle">shelf</text>
+          <rect x="60" y="100" width="18" height="16" fill="#eee" rx="1" opacity="0.7"/>
+          <text x="69" y="110" fill="#888" font-size="3" text-anchor="middle">white tbl</text>
+          <rect x="20" y="100" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="30" y="110" fill="#665" font-size="3" text-anchor="middle">workstn</text>
+          <rect x="2" y="100" width="14" height="16" fill="#C8A96E" rx="1" opacity="0.55"/>
+          <text x="9" y="110" fill="#665" font-size="2.8" text-anchor="middle">shelf</text>
+          <rect x="195" y="20" width="14" height="22" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="202" y="32" fill="#665" font-size="3" text-anchor="middle" transform="rotate(90,202,32)">PC</text>
+        </svg>
+      </div>
+      <div class="mm" id="mm-celab" style="display:none">
+        <div class="mm-t">Top View — CELab layout</div>
+        <svg viewBox="0 0 220 140" style="width:100%" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="1" width="218" height="138" fill="none" stroke="#ddd" stroke-width="1"/>
+          <rect x="2" y="2" width="216" height="4" fill="#B2AFA8" opacity="0.6"/>
+          <text x="110" y="10" fill="#998" font-size="4.5" text-anchor="middle">concrete back wall</text>
+          <rect x="2" y="20" width="216" height="22" fill="#1B4FC4" rx="1" opacity="0.18"/>
+          <text x="110" y="33" fill="#556" font-size="3.6" text-anchor="middle">shelving + filament spools</text>
+          <rect x="10" y="52" width="150" height="24" fill="#E84800" rx="1" opacity="0.28"/>
+          <text x="85" y="66" fill="#743" font-size="3.6" text-anchor="middle">component trays ×20</text>
+          <rect x="168" y="52" width="42" height="24" fill="#C8A96E" rx="1" opacity="0.55"/>
+          <text x="189" y="66" fill="#665" font-size="3.3" text-anchor="middle">workbench</text>
+          <rect x="8"   y="86" width="36" height="24" fill="#DD2222" rx="1" opacity="0.75"/>
+          <text x="26"  y="97" fill="white" font-size="3.6" text-anchor="middle">OUT OF</text>
+          <text x="26"  y="104" fill="white" font-size="3.6" text-anchor="middle">SERVICE</text>
+          <rect x="52"  y="86" width="36" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="70"  y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-2</text>
+          <rect x="96"  y="86" width="36" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="114" y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-6</text>
+          <rect x="140" y="86" width="36" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="158" y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-4</text>
+          <rect x="184" y="86" width="30" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="199" y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-5</text>
+          <rect x="30" y="118" width="160" height="16" fill="#E84800" rx="1" opacity="0.25"/>
+          <text x="110" y="129" fill="#743" font-size="3.6" text-anchor="middle">bench + seating (entrance side)</text>
+        </svg>
+      </div>
     </div>
   </div>
 </section>
+
+<!-- Hover tooltip for interactive objects in the LFL 3D model -->
+<div class="tip" id="hero-tip"><div class="tn" id="hero-tn"></div><div class="td" id="hero-td"></div></div>
 
 <!-- ═══════════════════════════════════════════════════
      TAB 1 — LIVE VIEW
@@ -303,34 +444,53 @@ select.machine-select{
   <p class="section-title">2.2 — Utilisation Rate Trend</p>
   <div class="card"><div id="chart-util" style="height:240px"></div></div>
 
-  <!-- 2.3 Leaderboard -->
-  <p class="section-title">2.3 — Machine Leaderboard</p>
-  <div class="leaderboard-grid">
-    <div class="lb-card">
-      <div class="lb-title">🏆 Highest Utilisation</div>
-      <div id="lb-util"></div>
-    </div>
-    <div class="lb-card">
-      <div class="lb-title">📶 Most Offline Events</div>
-      <div id="lb-offline"></div>
-    </div>
-    <div class="lb-card">
-      <div class="lb-title">⚠️ Most Failures</div>
-      <div id="lb-fail"></div>
-    </div>
-  </div>
-
-  <!-- 2.4 Health scores -->
-  <p class="section-title">2.4 — Machine Health Score</p>
-  <div class="health-grid" id="health-grid"></div>
-
-  <!-- 2.5 Filament usage -->
-  <p class="section-title">2.5 — Filament Usage by Machine (relative)</p>
-  <div class="card"><div id="chart-filament-usage" style="height:240px"></div></div>
-
-  <!-- 2.6 Filament type distribution -->
-  <p class="section-title">2.6 — Filament Type Distribution</p>
+  <!-- 2.6 Filament type distribution (moved up — relevant to every visitor) -->
+  <p class="section-title">2.3 — Filament Type Distribution</p>
   <div class="card"><div id="chart-filament-type" style="height:260px"></div></div>
+
+  <!-- 2.10 Bambu vs Prusa comparison — relevant to visitors (matches the physical exhibit split) and staff -->
+  <p class="section-title">2.4 — Bambu vs Prusa: Utilisation &amp; Reliability</p>
+  <div class="card"><div id="chart-brand-compare" style="height:260px"></div></div>
+
+  <!-- Sustainability estimate — a good talking point on an exhibit tour, kept visible to everyone -->
+  <p class="section-title">2.5 — Sustainability Estimate</p>
+  <div class="card" id="sustainability-result">Loading…</div>
+
+  <div data-audience="staff">
+    <!-- 2.6 Leaderboard -->
+    <p class="section-title">2.6 — Machine Leaderboard</p>
+    <p class="staff-note">Staff view — reliability &amp; usage ranking for lab management.</p>
+    <div class="leaderboard-grid">
+      <div class="lb-card">
+        <div class="lb-title">🏆 Highest Utilisation</div>
+        <div id="lb-util"></div>
+      </div>
+      <div class="lb-card">
+        <div class="lb-title">📶 Most Offline Events</div>
+        <div id="lb-offline"></div>
+      </div>
+      <div class="lb-card">
+        <div class="lb-title">⚠️ Most Failures</div>
+        <div id="lb-fail"></div>
+      </div>
+    </div>
+
+    <!-- 2.7 Health scores -->
+    <p class="section-title">2.7 — Machine Health Score</p>
+    <div class="health-grid" id="health-grid"></div>
+
+    <!-- 2.8 Filament usage -->
+    <p class="section-title">2.8 — Filament Usage by Machine (relative)</p>
+    <div class="card"><div id="chart-filament-usage" style="height:240px"></div></div>
+
+    <!-- 2.9 Job count trend -->
+    <p class="section-title">2.9 — Daily Job Count Trend</p>
+    <div class="card"><div id="chart-job-count" style="height:240px"></div></div>
+
+    <!-- 2.10 Temperature profile -->
+    <p class="section-title">2.10 — Average Nozzle &amp; Bed Temperature by Machine</p>
+    <div class="card"><div id="chart-temp-profile" style="height:260px"></div></div>
+  </div>
 
 </section>
 
@@ -345,30 +505,39 @@ select.machine-select{
     <div class="planner-result-text" id="best-time-result">Loading…</div>
   </div>
 
-  <!-- 3.2 Capacity simulator -->
-  <p class="section-title">3.2 — Capacity Planning Simulator</p>
-  <div class="planner-card">
-    <div class="slider-row">
-      <span class="slider-label">Number of machines: <strong id="sim-count">13</strong></span>
-      <input type="range" id="sim-slider" min="1" max="20" value="13">
-    </div>
-    <div class="planner-result-text" id="sim-result">—</div>
-  </div>
-
-  <!-- 3.3 Maintenance window -->
-  <p class="section-title">3.3 — Maintenance Window Suggestion</p>
-  <div class="planner-card">
-    <select class="machine-select" id="maintenance-select">
-      <option value="">Select a machine…</option>
-    </select>
-    <div class="planner-result-text" id="maintenance-result">Select a machine to see the best maintenance window.</div>
+  <!-- 3.2 Guess-the-next-free game -->
+  <p class="section-title">3.2 — Guess Who's Next Free 🎲</p>
+  <div class="planner-card" id="guess-game-card">
+    <div class="planner-result-text" id="guess-intro">Loading current activity…</div>
   </div>
 
   <!-- 3.4 Average wait time -->
-  <p class="section-title">3.4 — Average Wait Time by Hour (weekdays)</p>
+  <p class="section-title">3.3 — Average Wait Time by Hour (weekdays)</p>
   <div class="planner-card">
     <div class="planner-result-text" style="margin-bottom:12px" id="wait-intro">Estimated minutes until a machine is free, by time of day.</div>
     <div class="wait-grid" id="wait-grid"></div>
+  </div>
+
+  <div data-audience="staff">
+    <!-- 3.2 Capacity simulator -->
+    <p class="section-title">3.4 — Capacity Planning Simulator</p>
+    <p class="staff-note">Staff view — planning tool for lab capacity decisions.</p>
+    <div class="planner-card">
+      <div class="slider-row">
+        <span class="slider-label">Number of machines: <strong id="sim-count">—</strong></span>
+        <input type="range" id="sim-slider" min="1" max="20" value="13">
+      </div>
+      <div class="planner-result-text" id="sim-result">—</div>
+    </div>
+
+    <!-- 3.3 Maintenance window -->
+    <p class="section-title">3.5 — Maintenance Window Suggestion</p>
+    <div class="planner-card">
+      <select class="machine-select" id="maintenance-select">
+        <option value="">Select a machine…</option>
+      </select>
+      <div class="planner-result-text" id="maintenance-result">Select a machine to see the best maintenance window.</div>
+    </div>
   </div>
 
 </section>
@@ -381,6 +550,22 @@ select.machine-select{
     <button id="exit-vr">✕ Exit</button>
   </div>
   <div id="vr-status">Drag to look around</div>
+</div>
+
+<!-- Machine trading card — click any machine card in Live View -->
+<div class="tc-overlay" id="tc-overlay">
+  <div class="tc-card" id="tc-card">
+    <button class="tc-close" id="tc-close">✕</button>
+    <p class="tc-eyebrow" id="tc-lab">—</p>
+    <div class="tc-name" id="tc-name">—</div>
+    <div class="tc-type" id="tc-type">—</div>
+    <div class="tc-stats">
+      <div class="tc-stat"><span class="tc-stat-label">Cumulative print time</span><span class="tc-stat-val" id="tc-stat-time">—</span></div>
+      <div class="tc-stat"><span class="tc-stat-label">Most-printed material</span><span class="tc-stat-val" id="tc-stat-filament">—</span></div>
+      <div class="tc-stat"><span class="tc-stat-label">Longest single print</span><span class="tc-stat-val" id="tc-stat-streak">—</span></div>
+    </div>
+    <p class="tc-footer">Fabrication Lab Digital Twin · UCL Bartlett CASA</p>
+  </div>
 </div>
 
 <script src="js/supabase.js"></script>
@@ -405,6 +590,32 @@ function rack(par,px,pz,rw,rh,rd,shelfYs){
   [rh*0.62].forEach(y=>{bx(0.022,0.022,rd,uM,0,y,rd/2,g);bx(0.022,0.022,rd,uM,rw,y,rd/2,g);});
   shelfYs.forEach(y=>bx(rw+0.04,0.038,rd+0.04,M(C.OSB,0.82),rw/2,y,rd/2,g));
   g.position.set(px,0,pz);par.add(g);return g;
+}
+
+// Floating name-tag sprite (billboarded, always faces camera) — used only in
+// VR walkthroughs so visitors can tell machines apart while walking around,
+// where hovering for the tooltip isn't practical. The ortho home hero keeps
+// using the hover tooltip instead, to avoid cluttering the small canvas.
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function makeLabelSprite(text,accent){
+  const cnv=document.createElement('canvas');cnv.width=300;cnv.height=72;
+  const ctx=cnv.getContext('2d');
+  ctx.fillStyle='rgba(20,15,5,0.74)';roundRect(ctx,2,2,296,68,12);ctx.fill();
+  ctx.fillStyle=accent||'#E8C9A0';roundRect(ctx,2,2,6,68,3);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='bold 32px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(text,158,38);
+  const tex=new THREE.CanvasTexture(cnv);tex.needsUpdate=true;
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false});
+  const spr=new THREE.Sprite(mat);spr.scale.set(0.85,0.204,1);spr.renderOrder=999;
+  return spr;
+}
+// obj: object3D to attach the label to (in its own local space) · text: label
+// · localY: height above obj's local origin · opts.vrLabels: only add when true
+function addLabel(obj,text,localY,opts,accent){
+  if(!opts||!opts.vrLabels) return;
+  const s=makeLabelSprite(text,accent);
+  s.position.set(0,localY,0);
+  obj.add(s);
 }
 function H2D(g){
   const W=0.58,H=0.72,D=0.54;
@@ -463,34 +674,45 @@ function CoreOne(g){
   const sgr=new THREE.Mesh(new THREE.BoxGeometry(0.125,0.004,0.005),new THREE.MeshStandardMaterial({color:0xFF2200,emissive:0xCC1100,emissiveIntensity:1}));sgr.position.set(0,-0.092,D/2+0.014);g.add(sgr);
 }
 
-function buildLFL(scene){
+// Objects visitors can hover over in the LFL scene (tooltip via userData.label/detail/type)
+const LFL_IA=[];
+
+function buildLFL(scene,opts){
+  // Hero call (no opts) reuses the shared LFL_IA array for hover-tooltip
+  // raycasting; VR calls (opts.vrLabels) get a throwaway array instead, so
+  // repeated VR entries don't keep appending stale objects onto LFL_IA.
+  const IA=(opts&&opts.vrLabels)?[]:LFL_IA;
   const wM=M(C.WL,0.92);
   {const f=new THREE.Mesh(new THREE.BoxGeometry(20,0.06,11),M(C.FL,0.9));f.position.set(0,-0.03,0);scene.add(f);}
   {const w=new THREE.Mesh(new THREE.BoxGeometry(20,4.5,0.1),wM);w.position.set(0,2.25,-5);scene.add(w);}
   {const door=new THREE.Mesh(new THREE.BoxGeometry(0.08,3.2,3.3),M(0xC4C8CC,0.35,0.45));door.position.set(8.96,1.6,0);scene.add(door);}
   {const wd=new THREE.Mesh(new THREE.BoxGeometry(1.7,3.0,0.06),M(0xA87850,0.55));wd.position.set(4.5,1.5,4.96);scene.add(wd);}
   {const w=new THREE.Mesh(new THREE.BoxGeometry(0.08,4.5,10),wM);w.position.set(-8.96,2.25,0);scene.add(w);}
-  for(let x=-7;x<=7;x+=3.5)for(let z=-3;z<=3;z+=3){
+  // Ceiling lights — fewer fixtures (3x2=6, was 5x3=15) on top of the earlier
+  // per-light intensity dim, since 15 of these plus the shared ambient+sun
+  // lights still read as too bright.
+  for(let x=-6;x<=6;x+=6)for(let z=-2;z<=2;z+=4){
     const base=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.1,12),M(0x999999,0.35,0.5));base.position.set(x,4.4,z);scene.add(base);
-    const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.035,8,6),new THREE.MeshStandardMaterial({color:0xFFFFFF,emissive:0xFFFFFF,emissiveIntensity:0.85}));bulb.position.set(x,4.33,z);scene.add(bulb);
-    pl(0xFFF8F0,0.45,7,x,4.1,z,scene);
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.035,8,6),new THREE.MeshStandardMaterial({color:0xFFFFFF,emissive:0xFFFFFF,emissiveIntensity:0.5}));bulb.position.set(x,4.33,z);scene.add(bulb);
+    pl(0xFFF8F0,0.22,6,x,4.1,z,scene);
   }
-  {const gl=new THREE.Mesh(new THREE.BoxGeometry(18,3.0,0.04),new THREE.MeshStandardMaterial({color:0x8ABCDE,emissive:0x4A88AA,emissiveIntensity:0.28,transparent:true,opacity:0.42}));gl.position.set(0,2.0,-4.94);scene.add(gl);pl(0xC0D8EE,0.5,16,0,2.5,-4,scene);}
+  {const gl=new THREE.Mesh(new THREE.BoxGeometry(18,3.0,0.04),new THREE.MeshStandardMaterial({color:0x8ABCDE,emissive:0x4A88AA,emissiveIntensity:0.28,transparent:true,opacity:0.42}));gl.position.set(0,2.0,-4.94);scene.add(gl);pl(0xC0D8EE,0.35,16,0,2.5,-4,scene);}
   const ZA=4.5,ZB=0.0,ZC=-3.6,ZC_WALL=-4.75,CAB_Z=-4.72,SHELF_Z=-4.75;
   // Band A
   {const stand=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.46,0.92),M(0x1A1A1A,0.8));stand.position.set(7.0,0.23,ZA);scene.add(stand);
+   stand.userData={label:'Laser Cutter',detail:'CO₂ Laser Engraver · Trotec',type:'laser'};IA.push(stand);addLabel(stand,'Laser Cutter',0.85,opts,'#2A7A3A');
    const body=new THREE.Mesh(new THREE.BoxGeometry(1.28,0.2,0.9),M(0xF0F0F0,0.75));body.position.set(7.0,0.56,ZA);scene.add(body);
    const lid=new THREE.Mesh(new THREE.BoxGeometry(1.24,0.07,0.86),new THREE.MeshStandardMaterial({color:0x1A4A1A,emissive:0x0A3A0A,emissiveIntensity:0.35,transparent:true,opacity:0.6,roughness:0.05}));lid.position.set(7.0,0.69,ZA);scene.add(lid);
    bx(0.2,0.13,0.05,M(0x111111,0.8),6.4,0.53,ZA,scene);}
   {const cab=new THREE.Mesh(new THREE.BoxGeometry(0.65,2.1,0.55),M(0x111111,0.78));cab.position.set(2.7,1.05,ZA);scene.add(cab);bx(0.63,2.08,0.012,M(0x1A1A1A,0.7),2.7,1.05,ZA-0.27,scene);}
   const H2D_RACK_X=0.05,H2D_RACK_W=2.5,H2D_RACK_Z=ZA+0.36-0.72;
   rack(scene,H2D_RACK_X,H2D_RACK_Z,H2D_RACK_W,2.38,0.72,[0,1.15]);
-  [0,1,2,3].forEach(i=>{const g=new THREE.Group();H2D(g);g.rotation.y=Math.PI;g.position.set(H2D_RACK_X+H2D_RACK_W-(H2D_RACK_W/4)*(i+0.5),1.17,H2D_RACK_Z+0.36);scene.add(g);});
+  [0,1,2,3].forEach(i=>{const g=new THREE.Group();g.userData={label:`H2D-0${i+1}`,detail:'Bambu H2D · Dual-head multi-material',type:'bambu'};H2D(g);g.rotation.y=Math.PI;g.position.set(H2D_RACK_X+H2D_RACK_W-(H2D_RACK_W/4)*(i+0.5),1.17,H2D_RACK_Z+0.36);scene.add(g);IA.push(g);addLabel(g,`H2D-0${i+1}`,0.95,opts,'#1B4FC4');});
   [0xFFFFFF,0x111111,0x8800AA,0xCC6600,0x2244CC,0xFFDD00].forEach((c,i)=>{const sp=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.036,16),M(c,0.65));sp.rotation.x=Math.PI/2;sp.position.set(H2D_RACK_X+0.25+i*((H2D_RACK_W-0.5)/5),0.1,H2D_RACK_Z+0.26);scene.add(sp);});
   {const bin=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.11,0.38,16),M(0x111111,0.75));bin.position.set(H2D_RACK_X+0.2,0.19,H2D_RACK_Z+0.56);scene.add(bin);}
   const XL_RACK_X=-3.05,XL_RACK_W=1.4,XL_RACK_Z=ZA+0.3-0.65;
   rack(scene,XL_RACK_X,XL_RACK_Z,XL_RACK_W,2.1,0.65,[0,0.98]);
-  [0,1].forEach(i=>{const g=new THREE.Group();XL(g);g.rotation.y=Math.PI;g.position.set(XL_RACK_X+XL_RACK_W-(XL_RACK_W/2)*(i+0.5),1.0,XL_RACK_Z+0.325);scene.add(g);});
+  [0,1].forEach(i=>{const g=new THREE.Group();g.userData={label:`XL-0${i+1}`,detail:'Prusa XL · Open frame CoreXY',type:'prusa'};XL(g);g.rotation.y=Math.PI;g.position.set(XL_RACK_X+XL_RACK_W-(XL_RACK_W/2)*(i+0.5),1.0,XL_RACK_Z+0.325);scene.add(g);IA.push(g);addLabel(g,`XL-0${i+1}`,0.85,opts,'#E84800');});
   [0x888888,0x555555,0x3355AA].forEach((c,i)=>{const sp=new THREE.Mesh(new THREE.CylinderGeometry(0.088,0.088,0.034,16),M(c,0.65));sp.rotation.x=Math.PI/2;sp.position.set(XL_RACK_X+0.2+i*((XL_RACK_W-0.4)/2),0.1,XL_RACK_Z+0.225);scene.add(sp);});
   {const SM_H=1.425;const sm=new THREE.Mesh(new THREE.BoxGeometry(0.85,SM_H,0.65),M(0xD8D8D8,0.32,0.55));sm.position.set(-4.4,SM_H/2,ZA);scene.add(sm);bx(0.83,0.05,0.63,M(0xC8C8C8,0.3,0.6),-4.4,SM_H+0.025,ZA,scene);bx(0.8,SM_H*0.58,0.02,M(0xAAAAAA,0.28,0.5),-4.4,SM_H*0.63,ZA-0.32,scene);}
   [-5.5,-6.25].forEach(px=>{const cab=new THREE.Mesh(new THREE.BoxGeometry(0.65,2.1,0.55),M(0x111111,0.78));cab.position.set(px,1.05,ZA);scene.add(cab);bx(0.63,2.08,0.012,M(0x1A1A1A,0.7),px,1.05,ZA-0.27,scene);});
@@ -500,13 +722,13 @@ function buildLFL(scene){
   {const top=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.06,0.9),M(C.OSB,0.7));top.position.set(1.5,0.85,ZB);scene.add(top);[[-0.65,-0.35],[0.65,-0.35],[-0.65,0.35],[0.65,0.35]].forEach(([dx,dz])=>bx(0.06,0.85,0.06,M(0x4A3A2A,0.8),1.5+dx,0.425,ZB+dz,scene));}
   rack(scene,-0.6,ZB-0.36,1.2,2.22,0.72,[0,0.85]);
   bx(1.24,0.038,0.76,M(C.OSB,0.82),0.0,2.2,ZB,scene);
-  [0.23,-0.42].forEach(px=>{const g=new THREE.Group();X1C(g);g.position.set(px,0.89,ZB);scene.add(g);bx(0.4,0.22,0.36,M(C.GB,0.78),px,0.11,ZB+0.1,scene);});
+  [0.23,-0.42].forEach((px,i)=>{const g=new THREE.Group();g.userData={label:`X1C-0${i+1}`,detail:'Bambu X1-Carbon · Enclosed CoreXY (in rack)',type:'bambu'};X1C(g);g.position.set(px,0.89,ZB);scene.add(g);IA.push(g);bx(0.4,0.22,0.36,M(C.GB,0.78),px,0.11,ZB+0.1,scene);addLabel(g,`X1C-0${i+1}`,0.8,opts,'#1B4FC4');});
   const mkT2=(cx,cz,w,d)=>{bx(w,0.055,d,M(C.OSB,0.66),cx,0.88,cz,scene);[[-w/2+0.06,-d/2+0.06],[w/2-0.06,-d/2+0.06],[-w/2+0.06,d/2-0.06],[w/2-0.06,d/2-0.06]].forEach(([dx,dz])=>bx(0.06,0.88,0.06,M(0x111111,0.78),cx+dx,0.44,cz+dz,scene));};
   mkT2(-3.65,ZB+0.52,1.9,1.0);mkT2(-3.65,ZB-0.52,1.9,1.0);
   bx(0.65,2.1,0.55,M(0x111111,0.78),-6.2,1.05,ZB,scene);
   // Band C
   {const pil=new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.26,4.4,20),M(0xCCCCBB,0.88));pil.position.set(7.6,2.2,ZC_WALL);scene.add(pil);}
-  {bx(1.4,0.8,0.55,M(0xEEE8D8,0.85),6.3,0.4,CAB_Z,scene);[0xF5F0E0,0xE8E8E8,0xDDCCAA].forEach((c,i)=>bx(0.02,0.74,0.48,M(c,0.85),6.3-0.45+i*0.3,0.4,CAB_Z,scene));const g=new THREE.Group();CoreOne(g);g.position.set(6.3,0.85,CAB_Z);scene.add(g);}
+  {bx(1.4,0.8,0.55,M(0xEEE8D8,0.85),6.3,0.4,CAB_Z,scene);[0xF5F0E0,0xE8E8E8,0xDDCCAA].forEach((c,i)=>bx(0.02,0.74,0.48,M(c,0.85),6.3-0.45+i*0.3,0.4,CAB_Z,scene));const g=new THREE.Group();g.userData={label:'LFL-CoreOne-3',detail:'Prusa Core One · Enclosed FFF 3D printer',type:'prusa'};CoreOne(g);g.position.set(6.3,0.85,CAB_Z);scene.add(g);IA.push(g);addLabel(g,'CoreOne-3',0.8,opts,'#E84800');}
   {bx(0.7,0.6,0.65,M(0xCC2200,0.65),5.0,0.3,ZC_WALL+0.3,scene);bx(0.7,0.6,0.65,M(0x1144CC,0.65),4.25,0.3,ZC_WALL+0.3,scene);}
   {const fr=new THREE.Mesh(new THREE.BoxGeometry(1.4,2.2,0.4),M(C.OSB,0.78));fr.position.set(2.0,1.1,SHELF_Z);scene.add(fr);[0.5,1.0,1.5,2.0].forEach(y=>bx(1.38,0.03,0.38,M(C.CD,0.75),2.0,y,SHELF_Z,scene));}
   {const pil=new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.26,4.4,20),M(0xCCCCBB,0.88));pil.position.set(0.6,2.2,ZC_WALL);scene.add(pil);}
@@ -518,7 +740,11 @@ function buildLFL(scene){
    const mon=new THREE.Mesh(new THREE.BoxGeometry(0.026,0.3,0.46),new THREE.MeshStandardMaterial({color:0x000d1a,emissive:0x001122,emissiveIntensity:0.3,roughness:0.13}));mon.position.set(8.1,0.95,2.4);scene.add(mon);bx(0.025,0.32,0.16,M(0xEEEEEE,0.6),8.32,0.81,2.4,scene);}
 }
 
-function buildCELab(scene){
+// Objects visitors can hover over in the CELab scene (same userData pattern as LFL_IA)
+const CELAB_IA=[];
+
+function buildCELab(scene,opts){
+  const IA=(opts&&opts.vrLabels)?[]:CELAB_IA;
   const g=new THREE.Group();
   g.add(new THREE.Mesh(new THREE.BoxGeometry(22,0.1,16),M(0x888884,0.9)));
   const fl=new THREE.Mesh(new THREE.BoxGeometry(22,0.1,16),M(0x888884,0.9)); fl.position.set(0,-0.05,1); g.add(fl);
@@ -539,17 +765,41 @@ function buildCELab(scene){
     const tray=new THREE.Mesh(new THREE.BoxGeometry(0.44,0.31,0.58),M(ORANGE,0.6)); tray.position.set(tx,ty,tz); g.add(tray);
     const inn=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.25,0.50),M(0xBB3300,0.7)); inn.position.set(tx,ty+0.04,tz); g.add(inn);
   }
-  [-5.8,-2.9,0,2.9,5.8].forEach(px=>{
+  // 5 physical stands left→right; the leftmost is broken/retired in real life
+  // (kept visible for spatial accuracy, visually marked out-of-service — not
+  // wired to live data since it isn't tracked in Supabase). The 4 working
+  // units are named in their confirmed real-world left→right order.
+  const CELAB_STANDS=[
+    {x:-5.8,  name:null,       broken:true},
+    {x:-2.9,  name:'CoreOne-2',broken:false},
+    {x:0,     name:'CoreOne-6',broken:false},
+    {x:2.9,   name:'CoreOne-4',broken:false},
+    {x:5.8,   name:'CoreOne-5',broken:false},
+  ];
+  CELAB_STANDS.forEach(({x:px,name,broken})=>{
     const pg=new THREE.Group();
-    pg.add(new THREE.Mesh(new THREE.BoxGeometry(1.1,1.12,0.9),M(DGREY,0.85)));
-    [-0.51,0.51].forEach(ox=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(0.09,1.14,0.09),M(ORANGE,0.42,0.18)); s.position.set(ox,0,0); pg.add(s); });
-    [-0.53,0.53].forEach(oy=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(1.14,0.09,0.09),M(ORANGE,0.42,0.18)); s.position.set(0,oy,0); pg.add(s); });
-    const glass=new THREE.Mesh(new THREE.BoxGeometry(0.96,0.92,0.04),new THREE.MeshStandardMaterial({color:0x080808,roughness:0.05,metalness:0.4,transparent:true,opacity:0.83}));
+    const bodyCol = broken ? 0x4A4A4A : DGREY;
+    pg.add(new THREE.Mesh(new THREE.BoxGeometry(1.1,1.12,0.9),M(bodyCol,0.85)));
+    [-0.51,0.51].forEach(ox=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(0.09,1.14,0.09),M(broken?0x883300:ORANGE,0.42,0.18)); s.position.set(ox,0,0); pg.add(s); });
+    [-0.53,0.53].forEach(oy=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(1.14,0.09,0.09),M(broken?0x883300:ORANGE,0.42,0.18)); s.position.set(0,oy,0); pg.add(s); });
+    const glass=new THREE.Mesh(new THREE.BoxGeometry(0.96,0.92,0.04),new THREE.MeshStandardMaterial({color:broken?0x1a0a0a:0x080808,roughness:0.05,metalness:0.4,transparent:true,opacity:0.83}));
     glass.position.set(0,0.03,0.47); pg.add(glass);
     const bed=new THREE.Mesh(new THREE.BoxGeometry(0.66,0.04,0.6),M(0x2a2a2a,0.9)); bed.position.set(0,-0.32,0.1); pg.add(bed);
-    const disp=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.085,0.02),new THREE.MeshStandardMaterial({color:0x001020,roughness:0.3,emissive:0x003366,emissiveIntensity:0.7}));
+    const disp=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.085,0.02),new THREE.MeshStandardMaterial({color:0x001020,roughness:0.3,emissive:broken?0x220000:0x003366,emissiveIntensity:broken?0.3:0.7}));
     disp.position.set(0,-0.48,0.47); pg.add(disp);
-    const lbl=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.046,0.015),M(0xCC1100,0.55)); lbl.position.set(0,-0.40,0.456); pg.add(lbl);
+    const lbl=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.046,0.015),M(broken?0x662200:0xCC1100,0.55)); lbl.position.set(0,-0.40,0.456); pg.add(lbl);
+    if(broken){
+      // small red warning cross on the front glass so it reads as "out of
+      // service" even before the tooltip/label loads
+      const w1=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.05,0.01),new THREE.MeshStandardMaterial({color:0xDD2222,emissive:0x881111,emissiveIntensity:0.6}));
+      w1.rotation.z=Math.PI/4; w1.position.set(0,0.03,0.5); pg.add(w1);
+      const w2=w1.clone(); w2.rotation.z=-Math.PI/4; pg.add(w2);
+    }
+    pg.userData = broken
+      ? {label:'Out of Service',detail:'CoreOne · retired, not tracked',type:'broken'}
+      : {label:name,detail:'Prusa Core One · Enclosed FFF 3D printer',type:'prusa'};
+    IA.push(pg);
+    addLabel(pg, pg.userData.label, 0.85, opts, broken?'#DD2222':'#E84800');
     pg.position.set(px,1.64,-1.58); g.add(pg);
   });
   [0xFFFFFF,0xFFDD00,0xCCCCCC,0xFF6600,0x0055FF].forEach((c,i)=>{
@@ -567,6 +817,7 @@ function buildCELab(scene){
 }
 
 // Hero renderer
+let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
 (function(){
   const canvas=document.getElementById('three-canvas');
   const wrap=canvas.parentElement;
@@ -582,16 +833,51 @@ function buildCELab(scene){
   const lflGroup=new THREE.Group(); buildLFL(lflGroup); scene.add(lflGroup);
   const celabGroup=new THREE.Group(); buildCELab(celabGroup); scene.add(celabGroup);
   celabGroup.visible=false;
-  document.getElementById('btn-lfl').addEventListener('click',()=>{
-    lflGroup.visible=true; celabGroup.visible=false;
-    document.getElementById('btn-lfl').classList.add('active');
-    document.getElementById('btn-celab').classList.remove('active');
-  });
-  document.getElementById('btn-celab').addEventListener('click',()=>{
-    lflGroup.visible=false; celabGroup.visible=true;
-    document.getElementById('btn-celab').classList.add('active');
-    document.getElementById('btn-lfl').classList.remove('active');
-  });
+
+  // The two labs are built at different absolute Three.js dimensions (LFL's
+  // walls are 4.5 tall, CELab's are 12 tall on a slightly bigger footprint —
+  // and CELab's individual printer models are modelled roughly 2x chunkier
+  // relative to their room than LFL's), so viewed through the same fixed
+  // orthographic frustum they read as very different sizes on toggle.
+  //
+  // IMPORTANT: this camera is an OrthographicCamera, so changing camera
+  // *distance* (the old approach — a "zoom" variable feeding into
+  // `cam.position.set(...*r...)`) has zero effect on apparent size — that's
+  // exactly why the previous bounding-sphere fit didn't fix anything visually.
+  // Orthographic apparent size is controlled by the frustum, which is what
+  // three.js's built-in `camera.zoom` actually scales. Use that instead.
+  function fitRadius(group){
+    const box=new THREE.Box3().setFromObject(group);
+    return box.getBoundingSphere(new THREE.Sphere()).radius;
+  }
+  const rLfl=fitRadius(lflGroup), rCelab=fitRadius(celabGroup);
+  // LFL keeps zoom=1 (its previously-tuned, already-correct look); CELab is
+  // scaled by the true bounding-sphere ratio so both occupy the same visual
+  // fraction of the frame — no empirical fudge factor needed since cam.zoom
+  // (unlike camera distance) genuinely changes apparent size for an
+  // orthographic camera.
+  const zoomByLab={ lfl: 1, celab: (rCelab>0 ? rLfl/rCelab : 1) };
+
+  let drag=false,lx=0,ly=0,rotY=0.55,rotX=0.36,camZoom=zoomByLab.lfl;
+  cam.zoom=camZoom; cam.updateProjectionMatrix();
+  const hint=document.getElementById('drag-hint');
+  const mmLfl=document.getElementById('mm-lfl'), mmCelab=document.getElementById('mm-celab');
+
+  function setLab(lab){
+    currentLab=lab;
+    lflGroup.visible = lab==='lfl';
+    celabGroup.visible = lab==='celab';
+    document.getElementById('btn-lfl').classList.toggle('active', lab==='lfl');
+    document.getElementById('btn-celab').classList.toggle('active', lab==='celab');
+    camZoom = zoomByLab[lab]; cam.zoom=camZoom; cam.updateProjectionMatrix();
+    rotY=0.55; rotX=0.36;
+    if(mmLfl) mmLfl.style.display = lab==='lfl' ? '' : 'none';
+    if(mmCelab) mmCelab.style.display = lab==='celab' ? '' : 'none';
+  }
+  document.getElementById('btn-lfl').addEventListener('click',()=>setLab('lfl'));
+  document.getElementById('btn-celab').addEventListener('click',()=>setLab('celab'));
+  setLab('lfl');
+
   function resize(){
     const w=wrap.clientWidth,h=wrap.clientHeight;
     renderer.setSize(w,h);
@@ -599,8 +885,6 @@ function buildCELab(scene){
     cam.left=-f*a; cam.right=f*a; cam.updateProjectionMatrix();
   }
   resize(); window.addEventListener('resize',resize);
-  let drag=false,lx=0,ly=0,rotY=0.55,rotX=0.36,zoom=0.85;
-  const hint=document.getElementById('drag-hint');
   canvas.addEventListener('mousedown',e=>{drag=true;lx=e.clientX;ly=e.clientY});
   window.addEventListener('mouseup',()=>drag=false);
   window.addEventListener('mousemove',e=>{
@@ -608,7 +892,11 @@ function buildCELab(scene){
     rotY+=(e.clientX-lx)*0.007; rotX=Math.max(0.08,Math.min(1.15,rotX+(e.clientY-ly)*0.006));
     lx=e.clientX; ly=e.clientY;
   });
-  canvas.addEventListener('wheel',e=>{zoom=Math.max(0.4,Math.min(3.0,zoom+e.deltaY*0.001));e.preventDefault();},{passive:false});
+  canvas.addEventListener('wheel',e=>{
+    camZoom=Math.max(zoomByLab[currentLab]*0.4,Math.min(zoomByLab[currentLab]*3.0,camZoom-e.deltaY*0.0012*zoomByLab[currentLab]));
+    cam.zoom=camZoom; cam.updateProjectionMatrix();
+    e.preventDefault();
+  },{passive:false});
   let tLx=0,tLy=0;
   canvas.addEventListener('touchstart',e=>{tLx=e.touches[0].clientX;tLy=e.touches[0].clientY});
   canvas.addEventListener('touchmove',e=>{
@@ -616,15 +904,56 @@ function buildCELab(scene){
     rotY+=(e.touches[0].clientX-tLx)*0.009; rotX=Math.max(0.08,Math.min(1.15,rotX+(e.touches[0].clientY-tLy)*0.007));
     tLx=e.touches[0].clientX; tLy=e.touches[0].clientY; e.preventDefault();
   },{passive:false});
+
+  // Hover tooltip — raycast against whichever lab's interactive objects
+  // (H2D/XL/X1C/CoreOne/laser cutter, tagged with userData.label/detail/type)
+  // are currently visible.
+  const ray=new THREE.Raycaster(), mp=new THREE.Vector2();
+  const tip=document.getElementById('hero-tip'), tn=document.getElementById('hero-tn'), td=document.getElementById('hero-td');
+  function currentIA(){ return currentLab==='lfl' ? LFL_IA : CELAB_IA; }
+  function pickAt(e){
+    const rect=canvas.getBoundingClientRect();
+    mp.x=((e.clientX-rect.left)/rect.width)*2-1; mp.y=-((e.clientY-rect.top)/rect.height)*2+1;
+    ray.setFromCamera(mp,cam);
+    const hits=ray.intersectObjects(currentIA(),true);
+    for(const h of hits){ let o=h.object; while(o && !o.userData.label) o=o.parent; if(o && o.userData.label) return o; }
+    return null;
+  }
+  canvas.addEventListener('mousemove',e=>{
+    if(drag){ tip.className='tip'; return; }
+    const found=pickAt(e);
+    if(found){
+      tn.textContent=found.userData.label; td.textContent=found.userData.detail;
+      tip.style.left=(e.clientX+16)+'px'; tip.style.top=(e.clientY-8)+'px';
+      tip.className='tip '+(found.userData.type||'')+' on';
+      canvas.style.cursor='pointer';
+    } else {
+      tip.className='tip'; canvas.style.cursor=drag?'grabbing':'grab';
+    }
+  });
+  canvas.addEventListener('mouseleave',()=>{tip.className='tip';});
+  // Click a machine in the 3D view to open the same trading-card modal as
+  // clicking its card in Live View (skips the greyed-out "Out of Service" unit).
+  canvas.addEventListener('click',e=>{
+    const found=pickAt(e);
+    if(!found || found.userData.type==='broken' || !window.openTradingCard) return;
+    const info = window.MACHINE_LOOKUP && window.MACHINE_LOOKUP[found.userData.label];
+    if(info) window.openTradingCard(info.id, found.userData.label, info.type, info.lab);
+  });
+
   (function animate(){
     requestAnimationFrame(animate);
-    const r=34*zoom;
+    const r=34;
     cam.position.set(Math.sin(rotY)*Math.cos(rotX)*r,Math.sin(rotX)*r,Math.cos(rotY)*Math.cos(rotX)*r);
     cam.lookAt(0,1.5,0); renderer.render(scene,cam);
   })();
 })();
 
-// VR
+// VR — builds whichever lab is currently selected on the home hero (used to
+// always show CELab before, regardless of the toggle); WASD + drag-look
+// controls. Rebuilt fresh each time VR is entered so switching labs between
+// visits always shows the right one.
+let vrRenderer=null, vrResizeHandler=null, vrKeyHandlers=null;
 document.getElementById('enter-vr').addEventListener('click',()=>{
   document.getElementById('vr-overlay').classList.add('active'); initVR();
 });
@@ -633,23 +962,74 @@ document.getElementById('exit-vr').addEventListener('click',()=>{
 });
 function initVR(){
   const canvas=document.getElementById('vr-canvas');
-  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+
+  // Tear down the previous session's loop/listeners before rebuilding, so
+  // re-entering VR after switching labs doesn't leave a stale render loop.
+  if(vrRenderer){ vrRenderer.setAnimationLoop(null); }
+  if(vrResizeHandler){ window.removeEventListener('resize',vrResizeHandler); }
+  if(vrKeyHandlers){ window.removeEventListener('keydown',vrKeyHandlers.down); window.removeEventListener('keyup',vrKeyHandlers.up); }
+
+  const renderer=vrRenderer||(vrRenderer=new THREE.WebGLRenderer({canvas,antialias:true}));
   renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth,innerHeight); renderer.xr.enabled=true;
-  const scene=new THREE.Scene(); scene.background=new THREE.Color(0x111111);
-  const cam=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,100); cam.position.set(0,1.65,7); scene.add(cam);
+  renderer.setClearColor(0xDAD7D0,1);
+  // Was 0x111111 (near-black) — made the models unreadable in VR. Match the
+  // warm grey/tan tone used for the room floor & the reference model instead.
+  const scene=new THREE.Scene(); scene.background=new THREE.Color(0xDAD7D0);
+  scene.fog=new THREE.Fog(0xDAD7D0,14,42);
+  const cam=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,100);
   scene.add(new THREE.AmbientLight(0xfff8f0,0.5));
   const sun=new THREE.DirectionalLight(0xffeedd,1.2); sun.position.set(14,20,12); scene.add(sun);
-  buildCELab(scene);
+  const label = currentLab==='lfl' ? 'LFL' : 'CELab';
+  document.querySelector('.vr-title').textContent = `Print Lab — ${label} Walkthrough`;
+  // vrLabels:true adds a floating name sprite above each machine so visitors
+  // can tell them apart while walking around (hover isn't practical in VR).
+  if(currentLab==='lfl'){ buildLFL(scene,{vrLabels:true}); cam.position.set(-0.5,1.65,1.65); }
+  else { buildCELab(scene,{vrLabels:true}); cam.position.set(0,1.65,7); }
+
   if(navigator.xr) navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
-    document.getElementById('vr-status').textContent=ok?'VR detected — use your browser\'s Enter VR button':'Drag to look around';
+    document.getElementById('vr-status').textContent=ok?'VR detected — use your browser\'s Enter VR button':'Drag to look around · WASD to walk';
   });
-  let yaw=0,isDrag=false,lastX=0;
-  canvas.addEventListener('mousedown',e=>{isDrag=true;lastX=e.clientX});
+
+  let yaw=0,pit=0,isDrag=false,lastX=0,lastY=0;
+  const pos=cam.position.clone();
+  const keys={};
+  vrKeyHandlers={ down:e=>keys[e.key.toLowerCase()]=true, up:e=>keys[e.key.toLowerCase()]=false };
+  window.addEventListener('keydown',vrKeyHandlers.down);
+  window.addEventListener('keyup',vrKeyHandlers.up);
+  canvas.onmousedown=e=>{isDrag=true;lastX=e.clientX;lastY=e.clientY};
   window.addEventListener('mouseup',()=>isDrag=false);
-  window.addEventListener('mousemove',e=>{if(!isDrag)return;yaw-=(e.clientX-lastX)*0.004;lastX=e.clientX;});
-  renderer.setAnimationLoop(()=>{if(!renderer.xr.isPresenting)cam.rotation.y=yaw;renderer.render(scene,cam);});
-  window.addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
+  canvas.onmousemove=e=>{
+    if(!isDrag)return;
+    yaw-=(e.clientX-lastX)*0.004; pit=Math.max(-0.8,Math.min(0.8,pit-(e.clientY-lastY)*0.003));
+    lastX=e.clientX; lastY=e.clientY;
+  };
+  renderer.setAnimationLoop(()=>{
+    if(!renderer.xr.isPresenting){
+      const spd=0.07;
+      if(keys['w']||keys['arrowup'])    {pos.x+=Math.sin(yaw)*spd; pos.z+=Math.cos(yaw)*spd;}
+      if(keys['s']||keys['arrowdown'])  {pos.x-=Math.sin(yaw)*spd; pos.z-=Math.cos(yaw)*spd;}
+      if(keys['a']||keys['arrowleft'])  {pos.x+=Math.sin(yaw+Math.PI/2)*spd; pos.z+=Math.cos(yaw+Math.PI/2)*spd;}
+      if(keys['d']||keys['arrowright']) {pos.x+=Math.sin(yaw-Math.PI/2)*spd; pos.z+=Math.cos(yaw-Math.PI/2)*spd;}
+      cam.position.copy(pos);
+      cam.rotation.order='YXZ'; cam.rotation.y=yaw; cam.rotation.x=pit;
+    }
+    renderer.render(scene,cam);
+  });
+  vrResizeHandler=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();};
+  window.addEventListener('resize',vrResizeHandler);
 }
+</script>
+
+<!-- Minimap click-to-enlarge -->
+<script>
+document.querySelectorAll('.mm').forEach(mm=>{
+  mm.addEventListener('click', e=>{ e.stopPropagation(); mm.classList.toggle('expanded'); });
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.mm')){
+    document.querySelectorAll('.mm.expanded').forEach(mm=>mm.classList.remove('expanded'));
+  }
+});
 </script>
 
 <!-- Tab switching -->
@@ -663,6 +1043,32 @@ function switchTab(id){
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 document.getElementById('logo-btn').addEventListener('click',()=>switchTab('home'));
 document.getElementById('goto-live-btn').addEventListener('click',()=>switchTab('live'));
+</script>
+
+<!-- Visitor / Staff mode toggle — main interface stays visitor-first (per 16 June
+     supervision notes: students/visitors are the primary audience, lab staff
+     secondary), staff tools are hidden by default and opt-in. -->
+<script>
+(function(){
+  const KEY = 'dashMode';
+  function applyMode(mode){
+    document.querySelectorAll('#mode-toggle .mode-pill').forEach(el=>{
+      el.classList.toggle('active', el.dataset.mode === mode);
+    });
+    document.querySelectorAll('[data-audience="staff"]').forEach(el=>{
+      el.style.display = (mode === 'staff') ? '' : 'none';
+    });
+    window.DASH_MODE = mode;
+    window.dispatchEvent(new CustomEvent('dash-mode-changed', { detail: mode }));
+  }
+  document.querySelectorAll('#mode-toggle .mode-pill').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      localStorage.setItem(KEY, el.dataset.mode);
+      applyMode(el.dataset.mode);
+    });
+  });
+  applyMode(localStorage.getItem(KEY) || 'visitor');
+})();
 </script>
 </body>
 </html>

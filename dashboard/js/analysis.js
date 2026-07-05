@@ -13,40 +13,54 @@ const LIGHT_OPTS = {
 
 const CHART_COLORS = ['#E84800','#2563eb','#16a34a','#9333ea','#ea580c','#0891b2','#4f46e5','#db2777'];
 
+// Charts that live inside the Staff-only wrapper (2.7/2.8/2.9) get
+// initialised while their container is display:none in the default Visitor
+// mode — echarts reads 0x0 dimensions at init time and never repaints on
+// its own once the wrapper becomes visible. Keep every instance here so we
+// can force a resize() when the mode toggle reveals them.
+const allCharts = [];
+
 function makeChart(id) {
   const el = document.getElementById(id);
   if (!el) return null;
   const c = echarts.init(el, null, { renderer: 'canvas' });
   window.addEventListener('resize', () => c.resize());
+  allCharts.push(c);
   return c;
 }
 
+window.addEventListener('dash-mode-changed', () => {
+  // Let the [data-audience] display toggle apply first, then resize.
+  setTimeout(() => allCharts.forEach(c => { try { c.resize(); } catch (e) {} }), 30);
+});
+
 // ── 2.1 Heatmap ───────────────────────────────────────────────────────────────
+// Uses the usage_by_weekday_hour() RPC (added 5 July) instead of pulling raw
+// machine_status_logs rows to the browser. The old approach did
+// .limit(50000) with no .order() — at ~24k rows/day system-wide, a 14-day
+// window already holds 300k+ rows, so the client was silently seeing an
+// arbitrary unordered slice of it (often showing as a mostly-blank heatmap).
+// The RPC aggregates server-side and always returns at most 7*24=168 rows.
 async function initHeatmap() {
   const chart = makeChart('chart-heatmap');
   if (!chart) return;
 
   const since = new Date(Date.now() - 14 * 24 * 3600_000).toISOString();
-  const { data } = await db
-    .from('machine_status_logs')
-    .select('timestamp, active')
-    .gte('timestamp', since)
-    .limit(50000);
+  const { data, error } = await db.rpc('usage_by_weekday_hour', { since });
+
+  if (error) console.error('initHeatmap RPC error', error);
 
   if (!data || !data.length) {
     chart.setOption({ ...LIGHT_OPTS, graphic: [{type:'text',left:'center',top:'middle',style:{text:'Not enough data yet',fill:'#999',fontSize:14}}] });
     return;
   }
 
-  // Build [weekday][hour] buckets
+  // Build [weekday][hour] buckets directly from the aggregated rows
   const total = Array.from({length:7}, ()=>Array(24).fill(0));
   const active_count = Array.from({length:7}, ()=>Array(24).fill(0));
   for (const row of data) {
-    const d = new Date(row.timestamp);
-    const wd = d.getDay(); // 0=Sun
-    const hr = d.getHours();
-    total[wd][hr]++;
-    if (row.active) active_count[wd][hr]++;
+    total[row.weekday][row.hour] = row.total;
+    active_count[row.weekday][row.hour] = row.active_count;
   }
 
   const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -80,9 +94,9 @@ async function initUtilTrend() {
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
   const { data } = await db
     .from('machine_daily_summary')
-    .select('summary_date, machine_id, utilisation_rate, machines(name, lab)')
-    .gte('summary_date', since)
-    .order('summary_date', { ascending: true });
+    .select('date, machine_id, utilisation_rate, machines(name, lab)')
+    .gte('date', since)
+    .order('date', { ascending: true });
 
   if (!data || !data.length) {
     chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet — check if daily_summary.py is running',fill:'#999',fontSize:13}}] });
@@ -94,7 +108,7 @@ async function initUtilTrend() {
   const labCount = {};
   for (const row of data) {
     const lab = row.machines?.lab || 'Unknown';
-    const key = `${row.summary_date}|${lab}`;
+    const key = `${row.date}|${lab}`;
     if (!byDate[key]) { byDate[key] = { sum: 0, count: 0 }; }
     byDate[key].sum   += (row.utilisation_rate || 0);
     byDate[key].count += 1;
@@ -102,7 +116,7 @@ async function initUtilTrend() {
   }
 
   const labs = Object.keys(labCount);
-  const dates = [...new Set(data.map(r => r.summary_date))].sort();
+  const dates = [...new Set(data.map(r => r.date))].sort();
 
   const series = labs.map((lab, i) => ({
     name: lab,
@@ -139,7 +153,7 @@ async function initLeaderboard() {
   const { data } = await db
     .from('machine_daily_summary')
     .select('machine_id, utilisation_rate, number_of_offline_events, number_of_possible_failures, machines(name)')
-    .gte('summary_date', since);
+    .gte('date', since);
 
   if (!data || !data.length) {
     ['lb-util','lb-offline','lb-fail'].forEach(id => {
@@ -187,7 +201,7 @@ async function initHealthScores() {
   const { data } = await db
     .from('machine_daily_summary')
     .select('machine_id, number_of_possible_failures, number_of_offline_events, number_of_pauses, machines(name)')
-    .gte('summary_date', since);
+    .gte('date', since);
 
   const grid = document.getElementById('health-grid');
 
@@ -231,7 +245,7 @@ async function initFilamentUsage() {
   const { data } = await db
     .from('machine_daily_summary')
     .select('machine_id, total_active_minutes, machines(name)')
-    .gte('summary_date', since);
+    .gte('date', since);
 
   if (!data || !data.length) {
     chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet',fill:'#999',fontSize:13}}] });
@@ -265,6 +279,9 @@ async function initFilamentUsage() {
 }
 
 // ── 2.6 Filament Type Distribution ────────────────────────────────────────────
+// Recolours slices with the actual filament_color hex from Supabase (stored
+// as an 8-char RGBA hex, e.g. "FFFFFFFF") instead of the generic chart
+// palette, so the chart visually matches the real spools in the lab.
 async function initFilamentType() {
   const chart = makeChart('chart-filament-type');
   if (!chart) return;
@@ -272,7 +289,7 @@ async function initFilamentType() {
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
   const { data } = await db
     .from('machine_status_logs')
-    .select('filament_type')
+    .select('filament_type, filament_color')
     .gte('timestamp', since)
     .not('filament_type', 'is', null);
 
@@ -281,21 +298,30 @@ async function initFilamentType() {
     return;
   }
 
-  // Count by type
+  // Group by (type, colour) so each slice can use the real spool colour
   const counts = {};
   for (const row of data) {
     const t = (row.filament_type || 'Unknown').toUpperCase();
-    counts[t] = (counts[t] || 0) + 1;
+    const rawColor = (row.filament_color || '').trim();
+    const hex6 = /^[0-9a-fA-F]{6,8}$/.test(rawColor) ? rawColor.slice(0,6).toUpperCase() : null;
+    const key = `${t}|${hex6 || 'none'}`;
+    if (!counts[key]) counts[key] = { type: t, hex: hex6, count: 0 };
+    counts[key].count++;
   }
 
-  const pieData = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, value], i) => ({ name, value, itemStyle:{ color: CHART_COLORS[i % CHART_COLORS.length] } }));
+  let fallbackIdx = 0; // palette index, only used when a record has no real colour
+  const pieData = Object.values(counts)
+    .sort((a, b) => b.count - a.count)
+    .map(v => {
+      const color = v.hex ? `#${v.hex}` : CHART_COLORS[(fallbackIdx++) % CHART_COLORS.length];
+      const name = v.hex ? `${v.type} · #${v.hex}` : `${v.type} · unknown colour`;
+      return { name, value: v.count, itemStyle: { color, borderColor:'#fff', borderWidth:1 } };
+    });
 
   chart.setOption({
     ...LIGHT_OPTS,
     tooltip: { trigger:'item', formatter: p => `${p.name}<br>${p.value} records (${p.percent}%)` },
-    legend: { orient:'vertical', right:20, top:'middle', textStyle:{color:'#444',fontSize:12} },
+    legend: { orient:'vertical', right:20, top:'middle', textStyle:{color:'#444',fontSize:11}, itemWidth:12, itemHeight:12 },
     series: [{
       type:'pie',
       radius:['38%','70%'],
@@ -305,6 +331,183 @@ async function initFilamentType() {
       emphasis:{ label:{show:true,fontSize:13,fontWeight:'bold'}, itemStyle:{shadowBlur:10,shadowOffsetX:0,shadowColor:'rgba(0,0,0,0.15)'} },
     }],
   });
+}
+
+// ── 2.4 Bambu vs Prusa comparison ──────────────────────────────────────────────
+// Groups machine_daily_summary by brand (derived from machines.machine_type,
+// which used to default to 'Prusa Core One' for every machine — fixed 5 July).
+async function initBrandCompare() {
+  const chart = makeChart('chart-brand-compare');
+  if (!chart) return;
+
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
+  const { data } = await db
+    .from('machine_daily_summary')
+    .select('utilisation_rate, number_of_possible_failures, number_of_offline_events, machines(machine_type)')
+    .gte('date', since);
+
+  if (!data || !data.length) {
+    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet',fill:'#999',fontSize:13}}] });
+    return;
+  }
+
+  const brandOf = (machineType) => {
+    const t = (machineType || '').toLowerCase();
+    if (t.includes('bambu')) return 'Bambu';
+    if (t.includes('prusa')) return 'Prusa';
+    return 'Other';
+  };
+
+  const agg = {};
+  for (const row of data) {
+    const brand = brandOf(row.machines?.machine_type);
+    if (!agg[brand]) agg[brand] = { utilSum: 0, n: 0, fail: 0, offline: 0 };
+    agg[brand].utilSum += (row.utilisation_rate || 0);
+    agg[brand].fail    += (row.number_of_possible_failures || 0);
+    agg[brand].offline += (row.number_of_offline_events || 0);
+    agg[brand].n++;
+  }
+
+  const brands = Object.keys(agg).filter(b => b !== 'Other');
+  const avgUtil    = brands.map(b => parseFloat(((agg[b].utilSum / agg[b].n) * 100).toFixed(1)));
+  const failEvents = brands.map(b => agg[b].fail);
+  const offlineEvents = brands.map(b => agg[b].offline);
+
+  chart.setOption({
+    ...LIGHT_OPTS,
+    tooltip: { trigger:'axis', axisPointer:{type:'shadow'} },
+    legend: { data:['Avg utilisation %','Possible failures (30d)','Offline events (30d)'], textStyle:{color:'#444',fontSize:11}, top:0 },
+    grid: { left:60, right:40, top:44, bottom:30 },
+    xAxis: { type:'category', data:brands, axisLabel:{color:'#555',fontSize:12,fontWeight:600} },
+    yAxis: [
+      { type:'value', name:'%', max:100, axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
+      { type:'value', name:'events', axisLabel:{color:'#888',fontSize:10}, splitLine:{show:false} },
+    ],
+    series: [
+      { name:'Avg utilisation %', type:'bar', yAxisIndex:0, data:avgUtil, itemStyle:{color:CHART_COLORS[0],borderRadius:[4,4,0,0]}, barMaxWidth:60 },
+      { name:'Possible failures (30d)', type:'bar', yAxisIndex:1, data:failEvents, itemStyle:{color:CHART_COLORS[2],borderRadius:[4,4,0,0]}, barMaxWidth:60 },
+      { name:'Offline events (30d)', type:'bar', yAxisIndex:1, data:offlineEvents, itemStyle:{color:CHART_COLORS[1],borderRadius:[4,4,0,0]}, barMaxWidth:60 },
+    ],
+  });
+}
+
+// ── 2.8 Daily job count trend ──────────────────────────────────────────────────
+async function initJobCountTrend() {
+  const chart = makeChart('chart-job-count');
+  if (!chart) return;
+
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
+  const { data } = await db
+    .from('machine_daily_summary')
+    .select('date, number_of_jobs')
+    .gte('date', since)
+    .order('date', { ascending: true });
+
+  if (!data || !data.length) {
+    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet',fill:'#999',fontSize:13}}] });
+    return;
+  }
+
+  const byDate = {};
+  for (const row of data) byDate[row.date] = (byDate[row.date] || 0) + (row.number_of_jobs || 0);
+  const dates = Object.keys(byDate).sort();
+  const values = dates.map(d => byDate[d]);
+
+  chart.setOption({
+    ...LIGHT_OPTS,
+    tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br>${p[0].value} jobs across all machines` },
+    grid: { left:45, right:20, top:20, bottom:30 },
+    xAxis: { type:'category', data:dates, axisLabel:{color:'#888',fontSize:10,rotate:30} },
+    yAxis: { type:'value', axisLabel:{color:'#888',fontSize:10}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
+    series: [{ type:'bar', data:values, itemStyle:{color:CHART_COLORS[0],borderRadius:[3,3,0,0]}, barMaxWidth:18 }],
+  });
+}
+
+// ── 2.9 Average temperature profile per machine ────────────────────────────────
+async function initTempProfile() {
+  const chart = makeChart('chart-temp-profile');
+  if (!chart) return;
+
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
+  const { data } = await db
+    .from('machine_daily_summary')
+    .select('machine_id, avg_nozzle_temp, avg_bed_temp, machines(name)')
+    .gte('date', since);
+
+  if (!data || !data.length) {
+    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet',fill:'#999',fontSize:13}}] });
+    return;
+  }
+
+  const agg = {};
+  for (const row of data) {
+    const name = row.machines?.name || row.machine_id;
+    if (!agg[name]) agg[name] = { nozzle: 0, bed: 0, n: 0 };
+    if (row.avg_nozzle_temp != null) { agg[name].nozzle += Number(row.avg_nozzle_temp); }
+    if (row.avg_bed_temp != null)    { agg[name].bed    += Number(row.avg_bed_temp); }
+    agg[name].n++;
+  }
+
+  const names = Object.keys(agg);
+  const nozzle = names.map(n => parseFloat((agg[n].nozzle / agg[n].n).toFixed(1)));
+  const bed    = names.map(n => parseFloat((agg[n].bed / agg[n].n).toFixed(1)));
+
+  chart.setOption({
+    ...LIGHT_OPTS,
+    tooltip: { trigger:'axis' },
+    legend: { data:['Avg nozzle °C','Avg bed °C'], textStyle:{color:'#444',fontSize:11}, top:0 },
+    grid: { left:110, right:20, top:40, bottom:30 },
+    xAxis: { type:'value', axisLabel:{color:'#888',fontSize:10,formatter:'{value}°'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
+    yAxis: { type:'category', data:names, axisLabel:{color:'#555',fontSize:11} },
+    series: [
+      { name:'Avg nozzle °C', type:'bar', data:nozzle, itemStyle:{color:CHART_COLORS[4]}, barMaxWidth:9 },
+      { name:'Avg bed °C',    type:'bar', data:bed,    itemStyle:{color:CHART_COLORS[1]}, barMaxWidth:9 },
+    ],
+  });
+}
+
+// ── 2.5 Sustainability estimate ────────────────────────────────────────────────
+// Rough kWh / CO2 estimate from total_print_seconds. This is intentionally
+// approximate (labelled as such in the UI) — we don't have per-machine power
+// meters, so it assumes a flat average draw per printer and a UK grid
+// carbon-intensity figure. Good for a talking point on an exhibit tour, not
+// a precise energy audit.
+const AVG_PRINTER_WATTS = 150;               // rough average draw incl. bed+hotend heating
+const UK_GRID_KG_CO2_PER_KWH = 0.19;         // approx. recent UK grid average
+
+async function initSustainability() {
+  const el = document.getElementById('sustainability-result');
+  if (!el) return;
+
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
+  const { data } = await db
+    .from('machine_daily_summary')
+    .select('total_print_seconds')
+    .gte('date', since);
+
+  if (!data || !data.length) {
+    el.textContent = 'Not enough data yet to estimate.';
+    return;
+  }
+
+  const totalSeconds = data.reduce((a, r) => a + (r.total_print_seconds || 0), 0);
+  const hours = totalSeconds / 3600;
+  const kWh = (hours * AVG_PRINTER_WATTS) / 1000;
+  const co2 = kWh * UK_GRID_KG_CO2_PER_KWH;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:8px">
+      <div><span style="font-size:26px;font-weight:700;color:var(--accent)">${kWh.toFixed(0)}</span>
+        <span style="font-size:11px;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:0.05em">kWh (est.)</span></div>
+      <div><span style="font-size:26px;font-weight:700;color:var(--accent)">${co2.toFixed(0)}</span>
+        <span style="font-size:11px;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:0.05em">kg CO₂e (est.)</span></div>
+      <div><span style="font-size:26px;font-weight:700;color:var(--accent)">${Math.round(hours)}</span>
+        <span style="font-size:11px;color:var(--muted);display:block;text-transform:uppercase;letter-spacing:0.05em">print hours</span></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);line-height:1.5">
+      Estimated over the last 30 days across all machines. Assumes ~${AVG_PRINTER_WATTS}W average draw per printer
+      and ${UK_GRID_KG_CO2_PER_KWH} kg CO₂e/kWh (approx. UK grid average) — a rough talking-point figure, not a metered measurement.
+    </p>`;
 }
 
 // ── Init all ──────────────────────────────────────────────────────────────────
@@ -319,6 +522,10 @@ async function initAnalysis() {
     initHealthScores(),
     initFilamentUsage(),
     initFilamentType(),
+    initBrandCompare(),
+    initJobCountTrend(),
+    initTempProfile(),
+    initSustainability(),
   ]);
 }
 
