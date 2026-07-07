@@ -2,7 +2,12 @@
    Features: 3.1 Best Time · 3.2 Capacity Simulator ·
              3.3 Maintenance Window · 3.4 Average Wait Time     */
 
-let plannerInited = false;
+// Was a permanent "only ever run once" flag — meant that if the very first
+// tab-planner event happened to hit a transient issue (cold Supabase
+// connection, container still mid-layout, etc.), 3.1/3.2/3.4 stayed stuck on
+// their "not enough data" empty states forever, since nothing ever retried.
+// Now this only prevents two *overlapping* runs; a normal revisit re-fetches.
+let plannerRunning = false;
 let plannerHeatmap = null; // weekday×hour usage rates, cached for reuse
 
 // Machine count used to be hardcoded to 13 in several places on this site;
@@ -20,13 +25,29 @@ async function getMachineCount() {
 // unordered 80k-row slice of it. That's what made 3.1/3.2 look like "not
 // enough data" even though the underlying history is there. The RPC
 // aggregates server-side and always returns at most 168 rows.
+let usageTableInflight = null; // share one in-flight request between 3.1 and 3.3
+
 async function fetchUsageTable() {
   if (plannerHeatmap) return plannerHeatmap;
+  // Best-time and Wait-time both call this on tab open; without dedup they
+  // fired two identical heavy RPCs in parallel. Share one promise instead.
+  if (usageTableInflight) return usageTableInflight;
+  usageTableInflight = fetchUsageTableOnce();
+  const result = await usageTableInflight;
+  usageTableInflight = null;
+  return result;
+}
 
+async function fetchUsageTableOnce() {
   const since = new Date(Date.now() - 28 * 24 * 3600_000).toISOString();
-  const { data, error } = await db.rpc('usage_by_weekday_hour', { since });
-  if (error) console.error('fetchUsageTable RPC error', error);
-  if (!data || !data.length) return null;
+  let data = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await db.rpc('usage_by_weekday_hour', { since });
+    if (!res.error && res.data && res.data.length) { data = res.data; break; }
+    console.warn(`fetchUsageTable attempt ${attempt} failed`, res.error);
+    if (attempt === 1) await new Promise(r => setTimeout(r, 1500)); // brief pause, then one retry
+  }
+  if (!data) return null;
 
   const total = Array.from({length:7}, () => Array(24).fill(0));
   const active_cnt = Array.from({length:7}, () => Array(24).fill(0));
@@ -139,27 +160,36 @@ async function initCapacitySimulator() {
 }
 
 // ── 3.3 Maintenance Window Suggestion ─────────────────────────────────────────
+let maintenanceMachines = null; // cached so repeat inits don't re-fetch/re-populate the <select>
+
 async function initMaintenanceWindow() {
   const select = document.getElementById('maintenance-select');
   const result = document.getElementById('maintenance-result');
 
-  // Populate machine list
-  const { data: machines } = await db
-    .from('machines')
-    .select('id, name, lab')
-    .order('name');
+  // Populate machine list — only once (guard against duplicate <option>s
+  // piling up now that initPlanner can legitimately run again on a revisit).
+  if (select.options.length <= 1) {
+    const { data } = await db
+      .from('machines')
+      .select('id, name, lab')
+      .order('name');
+    maintenanceMachines = data;
 
-  if (machines) {
-    machines.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = `${m.name} (${m.lab})`;
-      select.appendChild(opt);
-    });
+    if (data) {
+      data.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `${m.name} (${m.lab})`;
+        select.appendChild(opt);
+      });
+    }
   }
+  const machines = maintenanceMachines;
 
   const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+  if (select.dataset.wired) return; // listener only needs to be attached once
+  select.dataset.wired = '1';
   select.addEventListener('change', async () => {
     const mid = select.value;
     if (!mid) { result.textContent = 'Select a machine to see the best maintenance window.'; return; }
@@ -346,16 +376,20 @@ async function initGuessGame(forceRefresh) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function initPlanner() {
-  if (plannerInited) return;
-  plannerInited = true;
+  if (plannerRunning) return;
+  plannerRunning = true;
 
-  await Promise.all([
-    initBestTime(),
-    initGuessGame(),
-    initCapacitySimulator(),
-    initMaintenanceWindow(),
-    initWaitTime(),
-  ]);
+  try {
+    await Promise.all([
+      initBestTime(),
+      initGuessGame(),
+      initCapacitySimulator(),
+      initMaintenanceWindow(),
+      initWaitTime(),
+    ]);
+  } finally {
+    plannerRunning = false;
+  }
 }
 
 window.addEventListener('tab-planner', initPlanner);

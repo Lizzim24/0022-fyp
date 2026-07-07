@@ -69,7 +69,7 @@ nav{
 .eyebrow{font-size:10px;letter-spacing:0.2em;text-transform:uppercase;opacity:0.4;margin-bottom:12px}
 h1.home-h1{font-size:clamp(24px,3vw,44px);font-weight:300;line-height:1.1;letter-spacing:-0.02em;margin-bottom:18px}
 h1.home-h1 strong{font-weight:700;display:block}
-.desc{font-size:13px;line-height:1.75;color:#555;margin-bottom:28px;max-width:280px}
+.desc{font-size:13px;line-height:1.75;color:#555;margin-bottom:28px;max-width:280px;text-align:justify}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
 .btn-primary{
   display:inline-flex;align-items:center;gap:8px;
@@ -121,6 +121,11 @@ h1.home-h1 strong{font-weight:700;display:block}
 #exit-vr{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:8px 18px;cursor:pointer}
 #exit-vr:hover{background:rgba(255,255,255,0.16)}
 #vr-status{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.3);font-size:11px;letter-spacing:0.08em;white-space:nowrap}
+/* Touch movement joystick — hidden by default, shown only for touch/coarse
+   pointers via JS (touch_ok check in initVR). */
+#vr-joystick{display:none;position:fixed;left:28px;bottom:28px;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);z-index:202;touch-action:none}
+#vr-joystick.show{display:block}
+#vr-joystick-knob{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,0.35);border:1px solid rgba(255,255,255,0.5);transform:translate(-50%,-50%);pointer-events:none}
 
 /* ═══════════════════════════════════════════════════════
    SHARED DASHBOARD STYLES (all 3 tabs)
@@ -131,16 +136,44 @@ h1.home-h1 strong{font-weight:700;display:block}
 .section-title{
   font-size:11px;font-weight:700;letter-spacing:0.12em;
   text-transform:uppercase;color:var(--muted);
-  margin:32px 0 14px;padding-bottom:8px;
+  margin:40px 0 14px;padding-bottom:8px;
   border-bottom:1px solid var(--border);
 }
 .section-title:first-child{margin-top:0}
+.section-sub{font-size:12px;color:var(--muted);margin:-12px 0 12px;max-width:640px;line-height:1.5}
+/* ── KPI strip (Analysis) ── */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:26px}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px}
+.kpi-num{font-size:24px;font-weight:700;line-height:1.15}
+.kpi-label{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.kpi-delta{font-size:11px;margin-top:5px;font-weight:600;display:block}
+.kpi-delta.up{color:var(--green)}.kpi-delta.down{color:var(--red)}.kpi-delta.flat{color:var(--muted)}
+/* ── Connection banner ── */
+#conn-banner{display:none;background:#B45309;color:#fff;font-size:12px;padding:8px 40px}
+#conn-banner.show{display:block}
+/* ── Tablet (exhibition device) & mobile ── */
+@media (max-width:1080px){
+  .dash-panel{padding:20px 18px}
+  nav{padding:12px 16px;flex-wrap:wrap;gap:8px}
+  .hero{grid-template-columns:1fr;padding:24px 20px 0}
+  .hero-left{padding-right:0;max-width:560px;margin-bottom:8px}
+  .canvas-wrap{height:56vh}
+  .leaderboard-grid{grid-template-columns:1fr}
+  #conn-banner{padding:8px 16px}
+}
+@media (max-width:640px){
+  .machine-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .summary-item{flex:1 1 40%}
+  .tab-nav{order:3;width:100%;overflow-x:auto}
+  .desc{text-align:left}
+}
 
 /* Card */
 .card{
   background:var(--surface);border:1px solid var(--border);
   border-radius:10px;padding:20px;
   box-shadow:0 1px 3px rgba(0,0,0,0.04);
+  margin-bottom:4px;
 }
 
 /* ── Summary bar ─────────────────────────────────────── */
@@ -214,6 +247,7 @@ h1.home-h1 strong{font-weight:700;display:block}
 .lb-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);font-size:12px}
 .lb-row:last-child{border-bottom:none}
 .lb-rank{width:18px;font-weight:700;color:var(--muted)}
+.lb-name{flex:1;padding:0 10px;min-width:0;text-align:left}
 .lb-val{font-weight:600;color:var(--text)}
 
 /* ── Analysis: health scores ─────────────────────────── */
@@ -289,6 +323,8 @@ select.machine-select{
   </div>
 </nav>
 
+<div id="conn-banner">Connection hiccup — showing the last known status. Retrying automatically…</div>
+
 <!-- ═══════════════════════════════════════════════════
      HOME
 ═══════════════════════════════════════════════════ -->
@@ -296,10 +332,10 @@ select.machine-select{
   <div class="hero">
     <div class="hero-left">
       <p class="eyebrow">UCL Bartlett — CASA</p>
-      <h1 class="home-h1">Fabrication Lab<strong>Digital Twin</strong></h1>
-      <p class="desc">Real-time operational data from LFL and CELab — <span id="home-machines-inline">—</span> machines tracked around the clock by Raspberry Pi agents.</p>
+      <h1 class="home-h1">Print Lab<strong>Digital Twin</strong></h1>
+      <p class="desc">Real-time operational data from Light Fabrication Lab and Connected Environments Lab, tracking <span id="home-machines-inline">—</span> machines around the clock through Raspberry Pi agents.</p>
       <div class="lab-toggle">
-        <button class="lab-btn active" id="btn-lfl">LFL</button>
+        <button class="lab-btn active" id="btn-lfl">LFLAB</button>
         <button class="lab-btn" id="btn-celab">CELab</button>
       </div>
       <div class="actions">
@@ -327,48 +363,63 @@ select.machine-select{
       <div class="mm" id="mm-lfl">
         <div class="mm-t">Top View — door wall removed (open side)</div>
         <svg viewBox="0 0 220 120" style="width:100%" xmlns="http://www.w3.org/2000/svg">
+          <!-- Rebuilt from buildLFL()'s actual coordinates, not the original
+               reference file's minimap (which had the window-wall/door-side
+               bands swapped top↔bottom from the real 3D layout). Z=-5 (back,
+               window wall) = top of this map; Z=+5ish (open, no wall) =
+               bottom — matching the walls/labels below. -->
           <rect x="1" y="1" width="218" height="118" fill="none" stroke="#ddd" stroke-width="1"/>
           <rect x="2" y="2" width="216" height="3" fill="#A8CCEE" opacity="0.6"/>
           <text x="110" y="9" fill="#7AA" font-size="4.5" text-anchor="middle">window wall</text>
           <text x="110" y="116" fill="#bbb" font-size="4.5" text-anchor="middle">open / door side</text>
           <text x="6" y="60" fill="#ccc" font-size="5" text-anchor="middle" transform="rotate(-90,6,60)">wall</text>
-          <rect x="208" y="25" width="4" height="20" fill="none" stroke="#999" stroke-width="1" stroke-dasharray="2,1"/>
-          <text x="215" y="38" fill="#999" font-size="4.5" text-anchor="middle" transform="rotate(90,215,38)">steel door</text>
-          <rect x="170" y="2" width="20" height="10" fill="#2A7A3A" rx="1" opacity="0.8"/>
-          <text x="180" y="9" fill="white" font-size="3.5" text-anchor="middle">Laser</text>
-          <rect x="110" y="2" width="13" height="10" fill="#222" rx="1" opacity="0.8"/>
-          <text x="116" y="9" fill="#aaa" font-size="3" text-anchor="middle">cab</text>
-          <rect x="78" y="2" width="29" height="10" fill="#1B4FC4" rx="1" opacity="0.85"/>
-          <text x="92" y="9" fill="white" font-size="3.8" text-anchor="middle">H2D×4</text>
-          <rect x="58" y="2" width="16" height="10" fill="#E84800" rx="1" opacity="0.85"/>
-          <text x="66" y="9" fill="white" font-size="3.5" text-anchor="middle">XL×2</text>
-          <rect x="38" y="2" width="16" height="10" fill="#888" rx="1" opacity="0.8"/>
-          <text x="46" y="9" fill="white" font-size="3" text-anchor="middle">silver eq.</text>
-          <rect x="13" y="2" width="22" height="10" fill="#222" rx="1" opacity="0.8"/>
-          <text x="24" y="9" fill="#aaa" font-size="3" text-anchor="middle">cab×2</text>
-          <rect x="155" y="50" width="36" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
-          <text x="173" y="60" fill="#665" font-size="3.5" text-anchor="middle">2 tables</text>
-          <rect x="92" y="50" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.55"/>
-          <text x="102" y="60" fill="#665" font-size="3.2" text-anchor="middle">big table</text>
-          <rect x="64" y="50" width="14" height="16" fill="#555" rx="1" opacity="0.8"/>
-          <text x="71" y="60" fill="white" font-size="3.2" text-anchor="middle">X1C×2</text>
+          <!-- Steel door is a partial door on the right wall spanning
+               z∈[-1.65,1.65] — the middle of the room, not near the window -->
+          <rect x="208" y="40" width="4" height="40" fill="none" stroke="#999" stroke-width="1" stroke-dasharray="2,1"/>
+          <text x="215" y="60" fill="#999" font-size="4.5" text-anchor="middle" transform="rotate(90,215,60)">steel door</text>
+
+          <!-- Near-window band (z≈-3.6 to -4.75): shelving, pillars, cab+CoreOne -->
+          <rect x="2" y="2" width="14" height="10" fill="#C8A96E" rx="1" opacity="0.55"/>
+          <text x="9" y="9" fill="#665" font-size="2.8" text-anchor="middle">shelf</text>
+          <rect x="20" y="2" width="20" height="10" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="30" y="9" fill="#665" font-size="3" text-anchor="middle">pillar</text>
+          <rect x="60" y="2" width="18" height="10" fill="#eee" rx="1" opacity="0.7"/>
+          <text x="69" y="9" fill="#888" font-size="3" text-anchor="middle">white tbl</text>
+          <rect x="92" y="2" width="20" height="10" fill="#9AABB0" rx="1" opacity="0.7"/>
+          <text x="102" y="9" fill="white" font-size="3" text-anchor="middle">shelf+bins</text>
+          <rect x="128" y="2" width="20" height="10" fill="#9AABB0" rx="1" opacity="0.6"/>
+          <text x="138" y="9" fill="white" font-size="2.8" text-anchor="middle">red/blue box</text>
+          <rect x="160" y="2" width="30" height="10" fill="#EEE8D8" rx="1" stroke="#ccc" stroke-width="0.5"/>
+          <text x="175" y="9" fill="#888" font-size="3.2" text-anchor="middle">cab+CoreOne</text>
+
+          <!-- Middle band (Z≈0): tables, X1C rack -->
+          <rect x="2" y="50" width="10" height="16" fill="#222" rx="1" opacity="0.8"/>
           <rect x="14" y="50" width="32" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
           <text x="30" y="60" fill="#665" font-size="3.2" text-anchor="middle">2 tables</text>
-          <rect x="2" y="50" width="10" height="16" fill="#222" rx="1" opacity="0.8"/>
-          <rect x="160" y="100" width="30" height="16" fill="#EEE8D8" rx="1" stroke="#ccc" stroke-width="0.5"/>
-          <text x="175" y="110" fill="#888" font-size="3.2" text-anchor="middle">cab+CoreOne</text>
-          <rect x="128" y="100" width="20" height="16" fill="#9AABB0" rx="1" opacity="0.7"/>
-          <text x="138" y="110" fill="white" font-size="3" text-anchor="middle">bins</text>
-          <rect x="92" y="100" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
-          <text x="102" y="110" fill="#665" font-size="3" text-anchor="middle">shelf</text>
-          <rect x="60" y="100" width="18" height="16" fill="#eee" rx="1" opacity="0.7"/>
-          <text x="69" y="110" fill="#888" font-size="3" text-anchor="middle">white tbl</text>
-          <rect x="20" y="100" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
-          <text x="30" y="110" fill="#665" font-size="3" text-anchor="middle">workstn</text>
-          <rect x="2" y="100" width="14" height="16" fill="#C8A96E" rx="1" opacity="0.55"/>
-          <text x="9" y="110" fill="#665" font-size="2.8" text-anchor="middle">shelf</text>
-          <rect x="195" y="20" width="14" height="22" fill="#C8A96E" rx="1" opacity="0.6"/>
-          <text x="202" y="32" fill="#665" font-size="3" text-anchor="middle" transform="rotate(90,202,32)">PC</text>
+          <rect x="64" y="50" width="14" height="16" fill="#555" rx="1" opacity="0.8"/>
+          <text x="71" y="60" fill="white" font-size="3.2" text-anchor="middle">X1C×2</text>
+          <rect x="92" y="50" width="20" height="16" fill="#C8A96E" rx="1" opacity="0.55"/>
+          <text x="102" y="60" fill="#665" font-size="3.2" text-anchor="middle">big table</text>
+          <rect x="155" y="50" width="36" height="16" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="173" y="60" fill="#665" font-size="3.5" text-anchor="middle">2 tables</text>
+          <!-- PC desk (z≈2.4) sits between the middle band and the door side,
+               against the right (steel-door) wall -->
+          <rect x="195" y="76" width="14" height="20" fill="#C8A96E" rx="1" opacity="0.6"/>
+          <text x="202" y="86" fill="#665" font-size="3" text-anchor="middle" transform="rotate(90,202,86)">PC</text>
+
+          <!-- Near-door band (z≈4.5, open side): laser, H2D/XL racks, cabs -->
+          <rect x="13" y="100" width="22" height="16" fill="#222" rx="1" opacity="0.8"/>
+          <text x="24" y="110" fill="#aaa" font-size="3" text-anchor="middle">cab×2</text>
+          <rect x="38" y="100" width="16" height="16" fill="#888" rx="1" opacity="0.8"/>
+          <text x="46" y="110" fill="white" font-size="3" text-anchor="middle">silver eq.</text>
+          <rect x="58" y="100" width="16" height="16" fill="#E84800" rx="1" opacity="0.85"/>
+          <text x="66" y="110" fill="white" font-size="3.5" text-anchor="middle">XL×2</text>
+          <rect x="78" y="100" width="29" height="16" fill="#1B4FC4" rx="1" opacity="0.85"/>
+          <text x="92" y="110" fill="white" font-size="3.8" text-anchor="middle">H2D×4</text>
+          <rect x="110" y="100" width="13" height="16" fill="#222" rx="1" opacity="0.8"/>
+          <text x="116" y="110" fill="#aaa" font-size="3" text-anchor="middle">cab</text>
+          <rect x="170" y="100" width="20" height="16" fill="#2A7A3A" rx="1" opacity="0.8"/>
+          <text x="180" y="110" fill="white" font-size="3.5" text-anchor="middle">Laser</text>
         </svg>
       </div>
       <div class="mm" id="mm-celab" style="display:none">
@@ -377,23 +428,24 @@ select.machine-select{
           <rect x="1" y="1" width="218" height="138" fill="none" stroke="#ddd" stroke-width="1"/>
           <rect x="2" y="2" width="216" height="4" fill="#B2AFA8" opacity="0.6"/>
           <text x="110" y="10" fill="#998" font-size="4.5" text-anchor="middle">concrete back wall</text>
-          <rect x="2" y="20" width="216" height="22" fill="#1B4FC4" rx="1" opacity="0.18"/>
-          <text x="110" y="33" fill="#556" font-size="3.6" text-anchor="middle">shelving + filament spools</text>
-          <rect x="10" y="52" width="150" height="24" fill="#E84800" rx="1" opacity="0.28"/>
-          <text x="85" y="66" fill="#743" font-size="3.6" text-anchor="middle">component trays ×20</text>
-          <rect x="168" y="52" width="42" height="24" fill="#C8A96E" rx="1" opacity="0.55"/>
-          <text x="189" y="66" fill="#665" font-size="3.3" text-anchor="middle">workbench</text>
-          <rect x="8"   y="86" width="36" height="24" fill="#DD2222" rx="1" opacity="0.75"/>
-          <text x="26"  y="97" fill="white" font-size="3.6" text-anchor="middle">OUT OF</text>
-          <text x="26"  y="104" fill="white" font-size="3.6" text-anchor="middle">SERVICE</text>
-          <rect x="52"  y="86" width="36" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
-          <text x="70"  y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-2</text>
-          <rect x="96"  y="86" width="36" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
-          <text x="114" y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-6</text>
-          <rect x="140" y="86" width="36" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
-          <text x="158" y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-4</text>
-          <rect x="184" y="86" width="30" height="24" fill="#1E1E1E" rx="1" opacity="0.85"/>
-          <text x="199" y="100" fill="white" font-size="3.8" text-anchor="middle">CoreOne-5</text>
+          <rect x="70" y="20" width="144" height="58" fill="#1B4FC4" rx="1" opacity="0.14" stroke="#1B4FC4" stroke-opacity="0.45" stroke-width="1"/>
+          <text x="142" y="30" fill="#556" font-size="3.6" text-anchor="middle">storage rack — filament spools ×2 shelves above</text>
+          <rect x="78"  y="38" width="38" height="26" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="97"  y="53" fill="white" font-size="3.8" text-anchor="middle">CoreOne-6</text>
+          <rect x="123" y="38" width="38" height="26" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="142" y="53" fill="white" font-size="3.8" text-anchor="middle">CoreOne-4</text>
+          <rect x="168" y="38" width="38" height="26" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="187" y="53" fill="white" font-size="3.8" text-anchor="middle">CoreOne-5</text>
+          <text x="142" y="73" fill="#743" font-size="3.4" text-anchor="middle">component trays below the printers</text>
+          <rect x="8" y="34" width="52" height="34" fill="#C8A96E" rx="1" opacity="0.5"/>
+          <text x="34" y="42" fill="#665" font-size="3.3" text-anchor="middle">wooden cabinet</text>
+          <rect x="11"  y="45" width="22" height="19" fill="#DD2222" rx="1" opacity="0.78"/>
+          <text x="22"  y="53" fill="white" font-size="3.2" text-anchor="middle">OUT OF</text>
+          <text x="22"  y="59" fill="white" font-size="3.2" text-anchor="middle">SERVICE</text>
+          <rect x="36"  y="45" width="22" height="19" fill="#1E1E1E" rx="1" opacity="0.85"/>
+          <text x="47"  y="56" fill="white" font-size="3.3" text-anchor="middle">CoreOne-2</text>
+          <rect x="8" y="86" width="202" height="20" fill="#EFEBE2" rx="1" stroke="#ddd" stroke-width="0.6"/>
+          <text x="109" y="98" fill="#998" font-size="3.6" text-anchor="middle">open floor</text>
           <rect x="30" y="118" width="160" height="16" fill="#E84800" rx="1" opacity="0.25"/>
           <text x="110" y="129" fill="#743" font-size="3.6" text-anchor="middle">bench + seating (entrance side)</text>
         </svg>
@@ -436,29 +488,36 @@ select.machine-select{
 ═══════════════════════════════════════════════════ -->
 <section id="tab-analysis" class="tab-panel dash-panel">
 
+  <div class="kpi-row" id="kpi-row"></div>
+
   <!-- 2.1 Heatmap -->
-  <p class="section-title">2.1 — Usage Heatmap (by weekday × hour)</p>
+  <p class="section-title">Usage heatmap</p>
+  <p class="section-sub">When is the lab busiest? Each cell is one hour of the week — darker means more printing.</p>
   <div class="card"><div id="chart-heatmap" style="height:280px"></div></div>
 
   <!-- 2.2 Utilisation trend -->
-  <p class="section-title">2.2 — Utilisation Rate Trend</p>
+  <p class="section-title">Utilisation trend</p>
+  <p class="section-sub">How much of each lab&rsquo;s capacity gets used, day by day, over the last month. Grey bands mark known data-collection gaps.</p>
   <div class="card"><div id="chart-util" style="height:240px"></div></div>
 
   <!-- 2.6 Filament type distribution (moved up — relevant to every visitor) -->
-  <p class="section-title">2.3 — Filament Type Distribution</p>
+  <p class="section-title">Filament types</p>
+  <p class="section-sub">What materials the labs actually print with.</p>
   <div class="card"><div id="chart-filament-type" style="height:260px"></div></div>
 
   <!-- 2.10 Bambu vs Prusa comparison — relevant to visitors (matches the physical exhibit split) and staff -->
-  <p class="section-title">2.4 — Bambu vs Prusa: Utilisation &amp; Reliability</p>
+  <p class="section-title">Bambu vs Prusa</p>
+  <p class="section-sub">Do the two fleets behave differently? Offline counts partly reflect how each brand reports its connection — not just reliability.</p>
   <div class="card"><div id="chart-brand-compare" style="height:260px"></div></div>
 
   <!-- Sustainability estimate — a good talking point on an exhibit tour, kept visible to everyone -->
-  <p class="section-title">2.5 — Sustainability Estimate</p>
+  <p class="section-title">Sustainability estimate</p>
+  <p class="section-sub">What a month of printing costs in energy — a rough figure with clearly labelled assumptions.</p>
   <div class="card" id="sustainability-result">Loading…</div>
 
   <div data-audience="staff">
     <!-- 2.6 Leaderboard -->
-    <p class="section-title">2.6 — Machine Leaderboard</p>
+    <p class="section-title">Machine leaderboard</p>
     <p class="staff-note">Staff view — reliability &amp; usage ranking for lab management.</p>
     <div class="leaderboard-grid">
       <div class="lb-card">
@@ -476,19 +535,19 @@ select.machine-select{
     </div>
 
     <!-- 2.7 Health scores -->
-    <p class="section-title">2.7 — Machine Health Score</p>
+    <p class="section-title">Machine health score</p>
     <div class="health-grid" id="health-grid"></div>
 
     <!-- 2.8 Filament usage -->
-    <p class="section-title">2.8 — Filament Usage by Machine (relative)</p>
+    <p class="section-title">Filament usage by machine (relative)</p>
     <div class="card"><div id="chart-filament-usage" style="height:240px"></div></div>
 
     <!-- 2.9 Job count trend -->
-    <p class="section-title">2.9 — Daily Job Count Trend</p>
+    <p class="section-title">Daily job count</p>
     <div class="card"><div id="chart-job-count" style="height:240px"></div></div>
 
     <!-- 2.10 Temperature profile -->
-    <p class="section-title">2.10 — Average Nozzle &amp; Bed Temperature by Machine</p>
+    <p class="section-title">Average nozzle &amp; bed temperature</p>
     <div class="card"><div id="chart-temp-profile" style="height:260px"></div></div>
   </div>
 
@@ -500,19 +559,21 @@ select.machine-select{
 <section id="tab-planner" class="tab-panel dash-panel">
 
   <!-- 3.1 Best time -->
-  <p class="section-title">3.1 — Best Time to Visit This Week</p>
+  <p class="section-title">Best time to visit this week</p>
+  <p class="section-sub">Based on a month of real usage patterns.</p>
   <div class="planner-card">
     <div class="planner-result-text" id="best-time-result">Loading…</div>
   </div>
 
   <!-- 3.2 Guess-the-next-free game -->
-  <p class="section-title">3.2 — Guess Who's Next Free 🎲</p>
+  <p class="section-title">Guess who's next free 🎲</p>
+  <p class="section-sub">A little game: pick the machine you think finishes first — the data will tell you.</p>
   <div class="planner-card" id="guess-game-card">
     <div class="planner-result-text" id="guess-intro">Loading current activity…</div>
   </div>
 
   <!-- 3.4 Average wait time -->
-  <p class="section-title">3.3 — Average Wait Time by Hour (weekdays)</p>
+  <p class="section-title">Average wait time by hour (weekdays)</p>
   <div class="planner-card">
     <div class="planner-result-text" style="margin-bottom:12px" id="wait-intro">Estimated minutes until a machine is free, by time of day.</div>
     <div class="wait-grid" id="wait-grid"></div>
@@ -520,7 +581,7 @@ select.machine-select{
 
   <div data-audience="staff">
     <!-- 3.2 Capacity simulator -->
-    <p class="section-title">3.4 — Capacity Planning Simulator</p>
+    <p class="section-title">Capacity planning simulator</p>
     <p class="staff-note">Staff view — planning tool for lab capacity decisions.</p>
     <div class="planner-card">
       <div class="slider-row">
@@ -531,7 +592,7 @@ select.machine-select{
     </div>
 
     <!-- 3.3 Maintenance window -->
-    <p class="section-title">3.5 — Maintenance Window Suggestion</p>
+    <p class="section-title">Maintenance window suggestion</p>
     <div class="planner-card">
       <select class="machine-select" id="maintenance-select">
         <option value="">Select a machine…</option>
@@ -550,6 +611,11 @@ select.machine-select{
     <button id="exit-vr">✕ Exit</button>
   </div>
   <div id="vr-status">Drag to look around</div>
+  <!-- Movement was WASD-only, which doesn't exist on a tablet — this is a
+       touch-only virtual joystick (bottom-left) for walking; the rest of the
+       screen stays a touch-drag look-around area, mirroring the mouse-drag
+       behaviour used on desktop. Shown only on touch/coarse-pointer devices. -->
+  <div id="vr-joystick"><div id="vr-joystick-knob"></div></div>
 </div>
 
 <!-- Machine trading card — click any machine card in Live View -->
@@ -699,13 +765,27 @@ function buildLFL(scene,opts){
   {const gl=new THREE.Mesh(new THREE.BoxGeometry(18,3.0,0.04),new THREE.MeshStandardMaterial({color:0x8ABCDE,emissive:0x4A88AA,emissiveIntensity:0.28,transparent:true,opacity:0.42}));gl.position.set(0,2.0,-4.94);scene.add(gl);pl(0xC0D8EE,0.35,16,0,2.5,-4,scene);}
   const ZA=4.5,ZB=0.0,ZC=-3.6,ZC_WALL=-4.75,CAB_Z=-4.72,SHELF_Z=-4.75;
   // Band A
-  {const stand=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.46,0.92),M(0x1A1A1A,0.8));stand.position.set(7.0,0.23,ZA);scene.add(stand);
-   stand.userData={label:'Laser Cutter',detail:'CO₂ Laser Engraver · Trotec',type:'laser'};IA.push(stand);addLabel(stand,'Laser Cutter',0.85,opts,'#2A7A3A');
-   const body=new THREE.Mesh(new THREE.BoxGeometry(1.28,0.2,0.9),M(0xF0F0F0,0.75));body.position.set(7.0,0.56,ZA);scene.add(body);
-   const lid=new THREE.Mesh(new THREE.BoxGeometry(1.24,0.07,0.86),new THREE.MeshStandardMaterial({color:0x1A4A1A,emissive:0x0A3A0A,emissiveIntensity:0.35,transparent:true,opacity:0.6,roughness:0.05}));lid.position.set(7.0,0.69,ZA);scene.add(lid);
-   bx(0.2,0.13,0.05,M(0x111111,0.8),6.4,0.53,ZA,scene);}
+  // Laser cutter — was a dark (near-black) base with a light top, and topped
+  // out below table height (0.73 vs the 0.88 table surfaces nearby). Real
+  // machine is mainly grey metal with black as the secondary/accent colour,
+  // and is a fairly large unit, a bit taller than the tables around it.
+  {const STAND_H=0.62,STAND_W=1.5,STAND_D=1.05;
+   const stand=new THREE.Mesh(new THREE.BoxGeometry(STAND_W,STAND_H,STAND_D),M(0x9A9A9A,0.5,0.25));stand.position.set(7.0,STAND_H/2,ZA);scene.add(stand);
+   stand.userData={label:'Laser Cutter',detail:'CO₂ Laser Engraver · Trotec',type:'laser'};IA.push(stand);addLabel(stand,'Laser Cutter',0.75,opts,'#2A7A3A');
+   const BODY_H=0.28;
+   const body=new THREE.Mesh(new THREE.BoxGeometry(STAND_W-0.02,BODY_H,STAND_D-0.02),M(0xB4B4B4,0.45,0.2));body.position.set(7.0,STAND_H+BODY_H/2,ZA);scene.add(body);
+   const LID_H=0.09;
+   const lid=new THREE.Mesh(new THREE.BoxGeometry(STAND_W-0.08,LID_H,STAND_D-0.08),new THREE.MeshStandardMaterial({color:0x1A4A1A,emissive:0x0A3A0A,emissiveIntensity:0.35,transparent:true,opacity:0.6,roughness:0.05}));lid.position.set(7.0,STAND_H+BODY_H+LID_H/2,ZA);scene.add(lid);
+   // black accent details — control panel strip + front vents, so black
+   // reads as the secondary colour rather than the dominant one
+   bx(0.22,0.14,0.05,M(0x111111,0.85),6.55,STAND_H*0.82,ZA+STAND_D/2-0.02,scene);
+   bx(STAND_W-0.3,0.05,0.03,M(0x1A1A1A,0.8),7.0,STAND_H*0.35,ZA+STAND_D/2-0.02,scene);}
   {const cab=new THREE.Mesh(new THREE.BoxGeometry(0.65,2.1,0.55),M(0x111111,0.78));cab.position.set(2.7,1.05,ZA);scene.add(cab);bx(0.63,2.08,0.012,M(0x1A1A1A,0.7),2.7,1.05,ZA-0.27,scene);}
-  const H2D_RACK_X=0.05,H2D_RACK_W=2.5,H2D_RACK_Z=ZA+0.36-0.72;
+  // Was X=0.05 (rack spans to 2.55), which overlapped the black cabinet at
+  // x=2.7 (spans 2.375–3.025) by ~0.175 units. Shifted left so the whole
+  // H2D rack + its spools/bin clears the cabinet with a small gap. Since
+  // buildLFL() is shared by the hero view and VR, this one change fixes both.
+  const H2D_RACK_X=-0.3,H2D_RACK_W=2.5,H2D_RACK_Z=ZA+0.36-0.72;
   rack(scene,H2D_RACK_X,H2D_RACK_Z,H2D_RACK_W,2.38,0.72,[0,1.15]);
   [0,1,2,3].forEach(i=>{const g=new THREE.Group();g.userData={label:`H2D-0${i+1}`,detail:'Bambu H2D · Dual-head multi-material',type:'bambu'};H2D(g);g.rotation.y=Math.PI;g.position.set(H2D_RACK_X+H2D_RACK_W-(H2D_RACK_W/4)*(i+0.5),1.17,H2D_RACK_Z+0.36);scene.add(g);IA.push(g);addLabel(g,`H2D-0${i+1}`,0.95,opts,'#1B4FC4');});
   [0xFFFFFF,0x111111,0x8800AA,0xCC6600,0x2244CC,0xFFDD00].forEach((c,i)=>{const sp=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.036,16),M(c,0.65));sp.rotation.x=Math.PI/2;sp.position.set(H2D_RACK_X+0.25+i*((H2D_RACK_W-0.5)/5),0.1,H2D_RACK_Z+0.26);scene.add(sp);});
@@ -748,66 +828,151 @@ function buildCELab(scene,opts){
   const g=new THREE.Group();
   g.add(new THREE.Mesh(new THREE.BoxGeometry(22,0.1,16),M(0x888884,0.9)));
   const fl=new THREE.Mesh(new THREE.BoxGeometry(22,0.1,16),M(0x888884,0.9)); fl.position.set(0,-0.05,1); g.add(fl);
-  const bw=new THREE.Mesh(new THREE.BoxGeometry(22,12,0.15),M(CONCRETE,0.95)); bw.position.set(0,6,-4.2); g.add(bw);
-  const lw=new THREE.Mesh(new THREE.BoxGeometry(0.15,12,16),M(CONCRETE,0.95)); lw.position.set(-11,6,1); g.add(lw);
-  [-7.5,-1.8,3.9,7.8].forEach(x=>{
-    [-3.4,-2.6].forEach(z=>{ const u=new THREE.Mesh(new THREE.BoxGeometry(0.1,6.2,0.1),M(BLUE,0.5,0.4)); u.position.set(x,3.1,z); g.add(u); });
+  // Wall height was 12 — nearly 3x LFL's 4.5, which is why the two labs read
+  // as such wildly different spaces even side by side. Real CELab ceiling is
+  // about the same height as LFL's, so match it.
+  const CE_WALL_H=4.5;
+  const bw=new THREE.Mesh(new THREE.BoxGeometry(22,CE_WALL_H,0.15),M(CONCRETE,0.95)); bw.position.set(0,CE_WALL_H/2,-4.2); g.add(bw);
+  const lw=new THREE.Mesh(new THREE.BoxGeometry(0.15,CE_WALL_H,16),M(CONCRETE,0.95)); lw.position.set(-11,CE_WALL_H/2,1); g.add(lw);
+
+  // Shelving unit (uprights/rails/platforms/spools/equipment) was designed
+  // for the old 12-tall room and would now poke through the lowered ceiling
+  // — scaled down as one group instead of hand-adjusting every coordinate.
+  const shelfUnit=new THREE.Group();
+  const CE_SCALE=0.68; // brings the ~6.2-tall unit to ~4.2, just under the new 4.5 ceiling
+  // Rack rebuilt to match the photographed layout: printers live INSIDE the
+  // rack on its deck level, with two filament shelves above them. 4 uprights
+  // frame 3 printer bays; the rack is deeper (z −3.55/−2.45) so a Core One
+  // fits between the posts.
+  const RACK_X=[-3.4,0.3,4.1,7.8], RACK_W=RACK_X[3]-RACK_X[0], RACK_CX=(RACK_X[0]+RACK_X[3])/2;
+  RACK_X.forEach(x=>{
+    [-3.55,-2.45].forEach(z=>{ const u=new THREE.Mesh(new THREE.BoxGeometry(0.1,6.2,0.1),M(BLUE,0.5,0.4)); u.position.set(x,3.1,z); shelfUnit.add(u); });
   });
-  [1.1,3.8,5.7].forEach(y=>{
-    [-3.4,-2.6].forEach(z=>{ const b=new THREE.Mesh(new THREE.BoxGeometry(16,0.13,0.1),M(ORANGE,0.45,0.25)); b.position.set(0.15,y,z); g.add(b); });
-    [-7.5,-1.8,3.9,7.8].forEach(x=>{ const cb=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.13,0.9),M(ORANGE,0.5,0.2)); cb.position.set(x,y,-3.0); g.add(cb); });
+  // Three levels: printer deck (1.55) + two filament shelves (3.8 / 5.7)
+  [1.55,3.8,5.7].forEach(y=>{
+    [-3.55,-2.45].forEach(z=>{ const b=new THREE.Mesh(new THREE.BoxGeometry(RACK_W+0.4,0.13,0.1),M(ORANGE,0.45,0.25)); b.position.set(RACK_CX,y,z); shelfUnit.add(b); });
+    RACK_X.forEach(x=>{ const cb=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.13,1.2),M(ORANGE,0.5,0.2)); cb.position.set(x,y,-3.0); shelfUnit.add(cb); });
   });
-  [3.83,5.73].forEach(y=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(16,0.07,0.9),M(0xCCCCCC,0.82)); s.position.set(0.15,y,-3.0); g.add(s); });
-  const bench=new THREE.Mesh(new THREE.BoxGeometry(16.2,0.07,2.1),M(WOOD,0.68)); bench.position.set(0.15,1.08,-1.6); g.add(bench);
-  [-7.8,8.1].forEach(x=>{ const p=new THREE.Mesh(new THREE.BoxGeometry(0.06,1.06,2.0),M(WOOD,0.72)); p.position.set(x,0.53,-1.6); g.add(p); });
-  for(let col=0;col<10;col++) for(let row=0;row<2;row++){
-    const tx=-7.0+col*1.6,ty=0.17+row*0.34,tz=-1.7;
-    const tray=new THREE.Mesh(new THREE.BoxGeometry(0.44,0.31,0.58),M(ORANGE,0.6)); tray.position.set(tx,ty,tz); g.add(tray);
-    const inn=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.25,0.50),M(0xBB3300,0.7)); inn.position.set(tx,ty+0.04,tz); g.add(inn);
+  [1.59,3.83,5.73].forEach(y=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(RACK_W+0.4,0.07,1.2),M(0xEDEDEA,0.82)); s.position.set(RACK_CX,y,-3.0); shelfUnit.add(s); });
+
+  // Real CELab has a single long ceiling-mounted LED strip (photographed on
+  // site) rather than a grid of bulbs — one fixture along the shelving run,
+  // set at the new (lowered) ceiling height.
+  {
+    const stripY=CE_WALL_H-0.18;
+    [-4,4].forEach(x=>{
+      const strip=new THREE.Mesh(new THREE.BoxGeometry(7,0.06,0.12),new THREE.MeshStandardMaterial({color:0xFFFFFF,emissive:0xFFFFFF,emissiveIntensity:0.9}));
+      strip.position.set(x,stripY,-3.0); g.add(strip);
+      pl(0xFFF8F0,0.3,9,x,stripY-0.2,-2.6,g);
+    });
+  }
+  // Wooden cabinet LEFT of the rack (photographed plywood unit) — the two
+  // "overflow" printers stand on this, slightly lower than the rack deck.
+  const cab=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.0,1.3),M(WOOD,0.68)); cab.position.set(-7.4,0.5,-3.0); g.add(cab);
+  const cabShelfGap=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.45,1.1),M(0xF4F0E8,0.85)); cabShelfGap.position.set(-7.4,0.35,-2.95); g.add(cabShelfGap);
+  // The tray grid had no shelf under it at all — trays just floated at their
+  // absolute height with a visible gap to the floor and to each other. Add
+  // an actual 2-tier shelf unit (side posts + boards) sized to the grid, so
+  // each row of trays sits flush on a real surface.
+  // Component trays live UNDER the rack deck (photographed wooden tray unit
+  // inside the rack's bottom bay), not free-standing in the middle of the room.
+  {
+    const unit=new THREE.Mesh(new THREE.BoxGeometry(10.4,0.95,1.15),M(WOOD,0.72));
+    unit.position.set(2.2,0.475,-3.0); g.add(unit);
+    for(let col=0;col<6;col++) for(let row=0;row<2;row++){
+      const tx=-1.9+col*1.7, ty=0.28+row*0.4, tz=-2.62;
+      const tray=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.3,0.16),M(ORANGE,0.6)); tray.position.set(tx,ty,tz); g.add(tray);
+      const lip=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.05,0.05),M(0xBB3300,0.7)); lip.position.set(tx,ty+0.16,tz+0.05); g.add(lip);
+    }
   }
   // 5 physical stands left→right; the leftmost is broken/retired in real life
   // (kept visible for spatial accuracy, visually marked out-of-service — not
   // wired to live data since it isn't tracked in Supabase). The 4 working
   // units are named in their confirmed real-world left→right order.
+  // Real placement (photographed): 2 machines on the wooden cabinet to the
+  // LEFT of the rack (incl. the retired unit), 3 inside the rack's bays.
   const CELAB_STANDS=[
-    {x:-5.8,  name:null,       broken:true},
-    {x:-2.9,  name:'CoreOne-2',broken:false},
-    {x:0,     name:'CoreOne-6',broken:false},
-    {x:2.9,   name:'CoreOne-4',broken:false},
-    {x:5.8,   name:'CoreOne-5',broken:false},
+    {x:-8.3,  y:1.02, name:null,       broken:true },  // cabinet, taped X
+    {x:-6.4,  y:1.02, name:'CoreOne-2',broken:false},  // cabinet
+    {x:-1.55, y:1.11, name:'CoreOne-6',broken:false},  // rack bay 1
+    {x: 2.2,  y:1.11, name:'CoreOne-4',broken:false},  // rack bay 2
+    {x: 5.95, y:1.11, name:'CoreOne-5',broken:false},  // rack bay 3
   ];
-  CELAB_STANDS.forEach(({x:px,name,broken})=>{
+  // Was a separate hand-built box+orange-frame model, at a noticeably
+  // different size/detail level from LFL's Prusa Core One — same real
+  // machine, but the two labs' digital twins showed it as two different-
+  // looking printers. Reuse the shared CoreOne() model (used once already in
+  // buildLFL) here too, scaled up to match CELab's larger absolute scale, so
+  // it's genuinely the same model in both places.
+  const CE_PRINTER_SCALE=1.9;
+  CELAB_STANDS.forEach(({x:px,y:py,name,broken})=>{
     const pg=new THREE.Group();
-    const bodyCol = broken ? 0x4A4A4A : DGREY;
-    pg.add(new THREE.Mesh(new THREE.BoxGeometry(1.1,1.12,0.9),M(bodyCol,0.85)));
-    [-0.51,0.51].forEach(ox=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(0.09,1.14,0.09),M(broken?0x883300:ORANGE,0.42,0.18)); s.position.set(ox,0,0); pg.add(s); });
-    [-0.53,0.53].forEach(oy=>{ const s=new THREE.Mesh(new THREE.BoxGeometry(1.14,0.09,0.09),M(broken?0x883300:ORANGE,0.42,0.18)); s.position.set(0,oy,0); pg.add(s); });
-    const glass=new THREE.Mesh(new THREE.BoxGeometry(0.96,0.92,0.04),new THREE.MeshStandardMaterial({color:broken?0x1a0a0a:0x080808,roughness:0.05,metalness:0.4,transparent:true,opacity:0.83}));
-    glass.position.set(0,0.03,0.47); pg.add(glass);
-    const bed=new THREE.Mesh(new THREE.BoxGeometry(0.66,0.04,0.6),M(0x2a2a2a,0.9)); bed.position.set(0,-0.32,0.1); pg.add(bed);
-    const disp=new THREE.Mesh(new THREE.BoxGeometry(0.25,0.085,0.02),new THREE.MeshStandardMaterial({color:0x001020,roughness:0.3,emissive:broken?0x220000:0x003366,emissiveIntensity:broken?0.3:0.7}));
-    disp.position.set(0,-0.48,0.47); pg.add(disp);
-    const lbl=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.046,0.015),M(broken?0x662200:0xCC1100,0.55)); lbl.position.set(0,-0.40,0.456); pg.add(lbl);
+    const model=new THREE.Group();
+    CoreOne(model);
+    model.scale.setScalar(CE_PRINTER_SCALE);
+    pg.add(model);
     if(broken){
-      // small red warning cross on the front glass so it reads as "out of
-      // service" even before the tooltip/label loads
-      const w1=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.05,0.01),new THREE.MeshStandardMaterial({color:0xDD2222,emissive:0x881111,emissiveIntensity:0.6}));
-      w1.rotation.z=Math.PI/4; w1.position.set(0,0.03,0.5); pg.add(w1);
+      // Red warning cross over the front, sized to the scaled model's
+      // roughly 0.87x1.1 footprint — reads as "out of service" even before
+      // the tooltip/floating label loads.
+      const crossY=0.58*CE_PRINTER_SCALE*0.5, crossZ=0.44/2*CE_PRINTER_SCALE+0.03;
+      const w1=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.06,0.01),new THREE.MeshStandardMaterial({color:0xDD2222,emissive:0x881111,emissiveIntensity:0.6}));
+      w1.rotation.z=Math.PI/4; w1.position.set(0,crossY,crossZ); pg.add(w1);
       const w2=w1.clone(); w2.rotation.z=-Math.PI/4; pg.add(w2);
     }
     pg.userData = broken
       ? {label:'Out of Service',detail:'CoreOne · retired, not tracked',type:'broken'}
       : {label:name,detail:'Prusa Core One · Enclosed FFF 3D printer',type:'prusa'};
     IA.push(pg);
-    addLabel(pg, pg.userData.label, 0.85, opts, broken?'#DD2222':'#E84800');
-    pg.position.set(px,1.64,-1.58); g.add(pg);
+    addLabel(pg, pg.userData.label, 0.58*CE_PRINTER_SCALE+0.3, opts, broken?'#DD2222':'#E84800');
+    pg.position.set(px,py,-3.0); g.add(pg); // rack deck (scaled 1.59→~1.11) or cabinet top (~1.02)
   });
-  [0xFFFFFF,0xFFDD00,0xCCCCCC,0xFF6600,0x0055FF].forEach((c,i)=>{
-    const sp=new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.24,0.1,20),M(c,0.65)); sp.rotation.x=Math.PI/2; sp.position.set(3.0+i*0.6,5.98,-3.0); g.add(sp);
-    const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.13,12),M(0xAAAAAA,0.5,0.3)); hub.rotation.x=Math.PI/2; hub.position.set(3.0+i*0.6,5.98,-3.0); g.add(hub);
+  // Spools sit on the top shelf tier (y=5.73, top surface ~5.765) — was
+  // y=5.98 which left them hovering with a visible gap above the shelf.
+  const SPOOL_R=0.24;
+  // Filament on BOTH upper shelves (photographed): spools + storage boxes.
+  [[5.73,[0xFFFFFF,0xFFDD00,0xCCCCCC,0xFF6600,0x0055FF],3.0],
+   [3.83,[0xFFFFFF,0xBBAA77,0xEEE8DD],0.4]].forEach(([tier,colors,x0])=>{
+    const surf=tier+0.07/2;
+    colors.forEach((c,i)=>{
+      const spy=surf+SPOOL_R;
+      const sp=new THREE.Mesh(new THREE.CylinderGeometry(SPOOL_R,SPOOL_R,0.1,20),M(c,0.65)); sp.rotation.x=Math.PI/2; sp.position.set(x0+i*0.6,spy,-3.0); shelfUnit.add(sp);
+      const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.13,12),M(0xAAAAAA,0.5,0.3)); hub.rotation.x=Math.PI/2; hub.position.set(x0+i*0.6,spy,-3.0); shelfUnit.add(hub);
+    });
   });
-  [-8,-6.2].forEach(x=>{ const box=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.52,0.42),M(0xC4A06A,0.9)); box.position.set(x,4.06,-2.97); g.add(box); });
-  for(let i=0;i<4;i++){ const cable=new THREE.Mesh(new THREE.TorusGeometry(0.13,0.017,6,16),M(0x111111,0.85)); cable.rotation.x=Math.PI/2; cable.position.set(0.5+i*0.4,4.0,-3.0); g.add(cable); }
+  // Cardboard boxes on the top shelf, as in the photo
+  [[5.5,0.72],[6.3,0.5]].forEach(([bx,bh])=>{
+    const box=new THREE.Mesh(new THREE.BoxGeometry(0.7,bh,0.6),M(0xC9A876,0.8)); box.position.set(bx,5.73+0.035+bh/2,-3.0); shelfUnit.add(box);
+  });
+  // Two small equipment boxes ("computers"/network gear). Previous version
+  // gave them their own free-standing shelf on 0.5-tall legs that didn't
+  // reach the floor (or anything else) — the whole board+legs+boxes group
+  // was structurally disconnected from the room and visibly hung in mid-air.
+  // Simplest correct fix: just rest them directly on the existing y=3.83
+  // shelf platform (already properly held up by the blue uprights), instead
+  // of building a redundant, unsupported second shelf right next to it.
+  {
+    const EQ_H=0.52;
+    const platformTop=3.83+0.07/2; // top surface of the existing shelf tier
+    const EQ_Y=platformTop+EQ_H/2;
+    [-2.8,-1.9].forEach(x=>{ const box=new THREE.Mesh(new THREE.BoxGeometry(0.58,EQ_H,0.42),M(0x1A1A1A,0.55,0.2)); box.position.set(x,EQ_Y,-3.0); shelfUnit.add(box);
+      const led=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.02,0.02),new THREE.MeshStandardMaterial({color:0x003300,emissive:0x00BB33,emissiveIntensity:0.8})); led.position.set(x,EQ_Y+0.15,-3.0+0.22); shelfUnit.add(led);
+    });
+  }
+  for(let i=0;i<4;i++){ const cable=new THREE.Mesh(new THREE.TorusGeometry(0.13,0.017,6,16),M(0x111111,0.85)); cable.rotation.x=Math.PI/2; cable.position.set(0.5+i*0.4,4.0,-3.0); shelfUnit.add(cable); }
+  shelfUnit.scale.y=CE_SCALE;
+  g.add(shelfUnit);
+
+  // Framed poster on the wall above the shelving (top-left), matching the
+  // "Cities in the Metaverse" print hanging in the real room.
+  {
+    const frame=new THREE.Mesh(new THREE.BoxGeometry(1.0,1.3,0.04),M(0x111111,0.7));
+    frame.position.set(-9.6,3.4,-4.1); g.add(frame);
+    const art=new THREE.Mesh(new THREE.BoxGeometry(0.86,1.14,0.01),new THREE.MeshStandardMaterial({color:0xDCE6EE,roughness:0.6}));
+    art.position.set(-9.6,3.4,-4.075); g.add(art);
+    const band=new THREE.Mesh(new THREE.BoxGeometry(0.16,1.14,0.012),M(0x8A1F2B,0.65));
+    band.position.set(-9.94,3.4,-4.07); g.add(band);
+  }
   const ft=new THREE.Mesh(new THREE.BoxGeometry(9,0.065,3.2),M(0x888884,0.75)); ft.position.set(-1,0.765,4.5); g.add(ft);
   [-3,0,3].forEach(x=>{
     const seat=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.065,0.54),M(ORANGE,0.75)); seat.position.set(x-1,0.79,3.8); g.add(seat);
@@ -953,7 +1118,7 @@ let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
 // always show CELab before, regardless of the toggle); WASD + drag-look
 // controls. Rebuilt fresh each time VR is entered so switching labs between
 // visits always shows the right one.
-let vrRenderer=null, vrResizeHandler=null, vrKeyHandlers=null;
+let vrRenderer=null, vrResizeHandler=null, vrKeyHandlers=null, vrTouchHandlers=null;
 document.getElementById('enter-vr').addEventListener('click',()=>{
   document.getElementById('vr-overlay').classList.add('active'); initVR();
 });
@@ -968,6 +1133,7 @@ function initVR(){
   if(vrRenderer){ vrRenderer.setAnimationLoop(null); }
   if(vrResizeHandler){ window.removeEventListener('resize',vrResizeHandler); }
   if(vrKeyHandlers){ window.removeEventListener('keydown',vrKeyHandlers.down); window.removeEventListener('keyup',vrKeyHandlers.up); }
+  if(vrTouchHandlers){ vrTouchHandlers.teardown(); }
 
   const renderer=vrRenderer||(vrRenderer=new THREE.WebGLRenderer({canvas,antialias:true}));
   renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth,innerHeight); renderer.xr.enabled=true;
@@ -986,8 +1152,11 @@ function initVR(){
   if(currentLab==='lfl'){ buildLFL(scene,{vrLabels:true}); cam.position.set(-0.5,1.65,1.65); }
   else { buildCELab(scene,{vrLabels:true}); cam.position.set(0,1.65,7); }
 
+  const touchHint = ('ontouchstart' in window || matchMedia('(pointer:coarse)').matches)
+    ? 'Drag to look · use the joystick to walk' : 'Drag to look around · WASD to walk';
+  document.getElementById('vr-status').textContent = touchHint;
   if(navigator.xr) navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
-    document.getElementById('vr-status').textContent=ok?'VR detected — use your browser\'s Enter VR button':'Drag to look around · WASD to walk';
+    if(ok) document.getElementById('vr-status').textContent='VR detected — use your browser\'s Enter VR button';
   });
 
   let yaw=0,pit=0,isDrag=false,lastX=0,lastY=0;
@@ -1003,6 +1172,71 @@ function initVR(){
     yaw-=(e.clientX-lastX)*0.004; pit=Math.max(-0.8,Math.min(0.8,pit-(e.clientY-lastY)*0.003));
     lastX=e.clientX; lastY=e.clientY;
   };
+
+  // Touch controls — WASD has no equivalent on a tablet, so movement never
+  // worked there at all. A touch-drag "look" zone (the canvas, same as the
+  // mouse) plus a virtual joystick (bottom-left, touch-only) for walking.
+  const joyEl=document.getElementById('vr-joystick'), knobEl=document.getElementById('vr-joystick-knob');
+  const isTouch = 'ontouchstart' in window || matchMedia('(pointer:coarse)').matches;
+  joyEl.classList.toggle('show', isTouch);
+  let joyVec={x:0,y:0}, joyTouchId=null, joyCenter={x:0,y:0};
+  const JOY_R=40;
+  function joyStart(e){
+    const t=e.changedTouches[0];
+    joyTouchId=t.identifier;
+    const r=joyEl.getBoundingClientRect();
+    joyCenter={x:r.left+r.width/2, y:r.top+r.height/2};
+    joyMove(e);
+    e.preventDefault();
+  }
+  function joyMove(e){
+    for(const t of e.changedTouches){
+      if(t.identifier!==joyTouchId) continue;
+      let dx=t.clientX-joyCenter.x, dy=t.clientY-joyCenter.y;
+      const d=Math.hypot(dx,dy)||1;
+      const clamp=Math.min(d,JOY_R);
+      dx=dx/d*clamp; dy=dy/d*clamp;
+      knobEl.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+      joyVec={x:dx/JOY_R, y:dy/JOY_R};
+    }
+    e.preventDefault();
+  }
+  function joyEnd(e){
+    for(const t of e.changedTouches){ if(t.identifier===joyTouchId) joyTouchId=null; }
+    if(joyTouchId===null){ joyVec={x:0,y:0}; knobEl.style.transform='translate(-50%,-50%)'; }
+    e.preventDefault();
+  }
+  joyEl.addEventListener('touchstart',joyStart,{passive:false});
+  joyEl.addEventListener('touchmove',joyMove,{passive:false});
+  joyEl.addEventListener('touchend',joyEnd,{passive:false});
+  joyEl.addEventListener('touchcancel',joyEnd,{passive:false});
+
+  let lookTouchId=null, lookLastX=0, lookLastY=0;
+  function lookStart(e){
+    if(lookTouchId!==null) return;
+    const t=e.changedTouches[0];
+    lookTouchId=t.identifier; lookLastX=t.clientX; lookLastY=t.clientY;
+  }
+  function lookMove(e){
+    for(const t of e.changedTouches){
+      if(t.identifier!==lookTouchId) continue;
+      yaw-=(t.clientX-lookLastX)*0.004; pit=Math.max(-0.8,Math.min(0.8,pit-(t.clientY-lookLastY)*0.003));
+      lookLastX=t.clientX; lookLastY=t.clientY;
+    }
+    e.preventDefault();
+  }
+  function lookEnd(e){ for(const t of e.changedTouches){ if(t.identifier===lookTouchId) lookTouchId=null; } }
+  canvas.addEventListener('touchstart',lookStart,{passive:false});
+  canvas.addEventListener('touchmove',lookMove,{passive:false});
+  canvas.addEventListener('touchend',lookEnd,{passive:false});
+  canvas.addEventListener('touchcancel',lookEnd,{passive:false});
+  vrTouchHandlers={ teardown(){
+    joyEl.removeEventListener('touchstart',joyStart); joyEl.removeEventListener('touchmove',joyMove);
+    joyEl.removeEventListener('touchend',joyEnd); joyEl.removeEventListener('touchcancel',joyEnd);
+    canvas.removeEventListener('touchstart',lookStart); canvas.removeEventListener('touchmove',lookMove);
+    canvas.removeEventListener('touchend',lookEnd); canvas.removeEventListener('touchcancel',lookEnd);
+  }};
+
   renderer.setAnimationLoop(()=>{
     if(!renderer.xr.isPresenting){
       const spd=0.07;
@@ -1010,6 +1244,12 @@ function initVR(){
       if(keys['s']||keys['arrowdown'])  {pos.x-=Math.sin(yaw)*spd; pos.z-=Math.cos(yaw)*spd;}
       if(keys['a']||keys['arrowleft'])  {pos.x+=Math.sin(yaw+Math.PI/2)*spd; pos.z+=Math.cos(yaw+Math.PI/2)*spd;}
       if(keys['d']||keys['arrowright']) {pos.x+=Math.sin(yaw-Math.PI/2)*spd; pos.z+=Math.cos(yaw-Math.PI/2)*spd;}
+      // Joystick: forward/back on its Y axis, strafe on its X axis — same
+      // convention as WASD, just continuous instead of on/off.
+      if(joyVec.x||joyVec.y){
+        pos.x += (Math.sin(yaw)*(-joyVec.y) + Math.sin(yaw+Math.PI/2)*joyVec.x) * spd;
+        pos.z += (Math.cos(yaw)*(-joyVec.y) + Math.cos(yaw+Math.PI/2)*joyVec.x) * spd;
+      }
       cam.position.copy(pos);
       cam.rotation.order='YXZ'; cam.rotation.y=yaw; cam.rotation.x=pit;
     }
@@ -1037,8 +1277,13 @@ document.addEventListener('click', e=>{
 function switchTab(id){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+id));
-  if(id==='analysis') window.dispatchEvent(new Event('tab-analysis'));
-  if(id==='planner')  window.dispatchEvent(new Event('tab-planner'));
+  // Wait a frame before firing the init/resize event: dispatching in the same
+  // tick as the classList change means charts can call echarts.init() while
+  // the container is still mid-layout from just becoming visible (reads a
+  // stale/zero size that never self-corrects). One rAF is enough for the
+  // browser to apply the display change first.
+  if(id==='analysis') requestAnimationFrame(()=>window.dispatchEvent(new Event('tab-analysis')));
+  if(id==='planner')  requestAnimationFrame(()=>window.dispatchEvent(new Event('tab-planner')));
 }
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 document.getElementById('logo-btn').addEventListener('click',()=>switchTab('home'));

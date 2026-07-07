@@ -77,22 +77,49 @@ function humanizeFilename(fn) {
 }
 
 // ── Fetch latest status ───────────────────────────────────────────────────────
+// Was: query machine_status_logs with .gte('timestamp', now-5min) then dedupe
+// client-side. That silently DROPPED any machine whose agent hadn't reported
+// in the last 5 minutes — not just marked it offline, it never appeared in
+// the result at all, so a whole lab could vanish from Live View if its Pi
+// agent went down (this is exactly what happened: LFL's agent stopped
+// reporting ~2 days ago, so the LFL section rendered completely empty
+// instead of showing those machines as offline).
+//
+// latest_status_per_machine() (added 6 July) always returns exactly one row
+// per machine — its true latest log, however old — so every machine always
+// shows up, and staleness is reflected via `online`/`stale` instead of the
+// card just disappearing.
+const STALE_MS = 5 * 60 * 1000;
+
+// Returns null on a genuine fetch failure (so the caller can skip this poll
+// and keep whatever was last rendered, instead of blanking the whole grid to
+// "No data" for one bad request every ~10s poll cycle), or an array — which,
+// now that every machine always has a row via the RPC, should basically
+// never legitimately be empty.
 async function fetchLatest() {
-  // Get the most recent row per machine
-  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const { data: logs, error } = await db
-    .from('machine_status_logs')
-    .select('*, machines(name, lab, machine_type)')
-    .gte('timestamp', since)
-    .order('timestamp', { ascending: false });
+  const { data, error } = await db.rpc('latest_status_per_machine');
+  if (error) { console.error('fetchLatest RPC error', error); return null; }
+  if (!data) return null;
 
-  if (error || !logs) return [];
-
-  // Deduplicate: keep first (most recent) row per machine_id
-  const seen = new Set();
-  return logs.filter(r => {
-    if (seen.has(r.machine_id)) return false;
-    seen.add(r.machine_id); return true;
+  return data.map(r => {
+    const ageMs = r.timestamp ? Date.now() - new Date(r.timestamp).getTime() : Infinity;
+    const stale = ageMs > STALE_MS;
+    return {
+      machine_id: r.machine_id,
+      timestamp: r.timestamp,
+      state: r.state,
+      online: !!r.online && !stale, // a machine that hasn't reported in 5+ min reads as offline regardless of the last value it sent
+      stale,
+      job_progress: r.job_progress,
+      job_remaining: r.job_remaining,
+      filament_type: r.filament_type,
+      filament_brand: r.filament_brand,
+      filament_color: r.filament_color,
+      filament_remain: r.filament_remain,
+      temp_nozzle: r.temp_nozzle,
+      nozzle_diameter: r.nozzle_diameter,
+      machines: { name: r.machine_name, lab: r.machine_lab, machine_type: r.machine_type },
+    };
   });
 }
 
@@ -227,6 +254,12 @@ async function fetchTaskNames(latest) {
 }
 
 // ── Render machine card ────────────────────────────────────────────────────────
+// Per-machine operational notes, shown on the card when the machine is offline.
+// CoreOne-3's frequent "offline" is planned: staff power it down when unused.
+const MACHINE_NOTES = {
+  'LFL-CoreOne-3': 'Usually powered off when not in use — this is normal',
+};
+
 function renderCard(r, stuckNames, manualStops, taskNames) {
   const name  = r.machines?.name || r.machine_id;
   const cls   = state_class(r);
@@ -254,6 +287,11 @@ function renderCard(r, stuckNames, manualStops, taskNames) {
   if (remaining && cls === 'printing') metaLines.push(`⏱ ${remaining} left`);
   if (r.temp_nozzle) metaLines.push(`🌡 ${Math.round(r.temp_nozzle)}°C nozzle`);
   if (manualStop) metaLines.push(`<span style="color:var(--orange)">⏸ Manually stopped at ${Math.round(manualStop.progress_at_stop ?? 0)}% · ${fmt_ago(manualStop.start_time)}</span>`);
+  // A machine whose agent has stopped reporting shows as offline (via
+  // state_class/state_label above) *and* says how long it's been quiet, so
+  // it reads as "agent down" rather than looking like a data glitch.
+  if (r.stale) metaLines.push(`<span style="color:var(--muted)">Last seen ${fmt_ago(r.timestamp)} — check the Pi agent</span>`);
+  if ((cls === 'offline' || r.stale) && MACHINE_NOTES[name]) metaLines.push(`<span style="color:var(--muted)">ℹ ${MACHINE_NOTES[name]}</span>`);
 
   const lab = r.machines?.lab || '';
   const mtype = r.machines?.machine_type || '';
@@ -308,6 +346,21 @@ async function refreshMachineCount() {
 // ── Main render ───────────────────────────────────────────────────────────────
 async function renderLive() {
   const latest = await fetchLatest();
+
+  // null = this particular poll failed (network blip, etc.) — skip the
+  // update entirely and leave the previous render in place; retry on the
+  // next 10s poll. Previously any failed fetch replaced BOTH grids with
+  // "No data — check agent." for that cycle, which is why the page seemed
+  // to randomly flash empty even though the summary numbers (rendered on an
+  // earlier successful poll) still looked fine.
+  const connBanner = document.getElementById('conn-banner');
+  if (latest === null) {
+    console.warn('renderLive: skipping this poll, fetch failed');
+    if (connBanner) connBanner.classList.add('show');
+    return;
+  }
+  if (connBanner) connBanner.classList.remove('show');
+
   if (!latest.length) {
     document.getElementById('grid-lfl').innerHTML   = '<p style="color:var(--muted);font-size:12px">No data — check agent.</p>';
     document.getElementById('grid-celab').innerHTML = '<p style="color:var(--muted);font-size:12px">No data — check agent.</p>';
@@ -351,8 +404,14 @@ async function renderLive() {
   if (homePrinting) homePrinting.textContent = printing;
 
   // 1.4 Split by lab
-  const lfl   = latest.filter(r => r.machines?.lab === 'LFL');
-  const celab = latest.filter(r => r.machines?.lab === 'CELab');
+  // Sort so what needs eyes comes first: printing → needs attention → done/idle → offline
+  const CLS_ORDER = { printing:0, paused:1, attention:1, error:1, stopped:1, preparing:2, finished:2, idle:3, offline:4 };
+  const byPriority = (x, y) =>
+    ((CLS_ORDER[state_class(x)] ?? 3) - (CLS_ORDER[state_class(y)] ?? 3)) ||
+    String(x.machines?.name || '').localeCompare(String(y.machines?.name || ''));
+
+  const lfl   = latest.filter(r => r.machines?.lab === 'LFL').sort(byPriority);
+  const celab = latest.filter(r => r.machines?.lab === 'CELab').sort(byPriority);
 
   document.getElementById('grid-lfl').innerHTML =
     (lfl.length ? lfl : latest.filter(r => !r.machines?.lab || r.machines?.lab === 'LFL'))

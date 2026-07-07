@@ -3,7 +3,15 @@
              2.3 Machine Leaderboard · 2.4 Health Score ·
              2.5 Filament Usage · 2.6 Filament Type Distribution     */
 
-let analysisInited = false;
+// Was a permanent "only ever run once" flag — if the very first attempt hit
+// any transient issue (slow first Supabase round-trip, tab container still
+// mid-layout, etc.) every chart on this tab stayed stuck on its empty/error
+// state forever, since nothing ever ran again. Now this only guards against
+// two *overlapping* runs (e.g. rapidly re-clicking the tab); a normal
+// revisit re-fetches, which both retries after a bad first load and keeps
+// the data reasonably fresh. echarts.init() on an already-initialised
+// container just returns the existing instance, so re-running is safe.
+let analysisRunning = false;
 
 // ── ECharts light theme base ──────────────────────────────────────────────────
 const LIGHT_OPTS = {
@@ -19,13 +27,16 @@ const CHART_COLORS = ['#E84800','#2563eb','#16a34a','#9333ea','#ea580c','#0891b2
 // its own once the wrapper becomes visible. Keep every instance here so we
 // can force a resize() when the mode toggle reveals them.
 const allCharts = [];
+const chartsById = {}; // reuse instances across repeat tab visits instead of re-initialising + re-registering a resize listener each time
 
 function makeChart(id) {
   const el = document.getElementById(id);
   if (!el) return null;
+  if (chartsById[id]) return chartsById[id];
   const c = echarts.init(el, null, { renderer: 'canvas' });
   window.addEventListener('resize', () => c.resize());
   allCharts.push(c);
+  chartsById[id] = c;
   return c;
 }
 
@@ -80,7 +91,8 @@ async function initHeatmap() {
     grid: { left: 55, right: 20, top: 16, bottom: 30 },
     xAxis: { type: 'category', data: Array.from({length:24}, (_,i) => `${i}:00`), axisLabel: { color:'#888', fontSize:10, interval:1 }, splitLine:{show:false} },
     yAxis: { type: 'category', data: days, axisLabel: { color:'#666', fontSize:11 }, splitLine:{show:false} },
-    visualMap: { min:0, max:Math.max(maxRate*100,1), calculable:false, orient:'horizontal', left:'right', bottom:'bottom', show:false,
+    visualMap: { min:0, max:Math.max(maxRate*100,1), calculable:false, orient:'horizontal', left:'right', bottom:'bottom', show:true,
+      text:[Math.round(Math.max(maxRate*100,1)) + '% busy', 'quiet'], textStyle:{color:'#888',fontSize:10}, itemWidth:10, itemHeight:80,
       inRange: { color: ['#EFEFEC','#fca5a5','#ef4444','#991b1b'] } },
     series: [{ type:'heatmap', data:seriesData, itemStyle:{borderRadius:3,borderWidth:1,borderColor:'#EFEFEC'}, emphasis:{itemStyle:{shadowBlur:6,shadowColor:'rgba(0,0,0,0.3)'}} }],
   });
@@ -134,6 +146,25 @@ async function initUtilTrend() {
     connectNulls: true,
   }));
 
+  // Annotate known data-collection gaps so a missing stretch reads as
+  // "agent offline", not "zero utilisation" (incident log, 4–7 Jul 2026).
+  const DATA_GAPS = [
+    { start:'2026-07-04', end:'2026-07-07', label:'LFL agent offline' },
+  ];
+  const gapAreas = DATA_GAPS.map(g => {
+    const inRange = dates.filter(d => d >= g.start && d <= g.end);
+    if (!inRange.length) return null;
+    return [
+      { name:g.label, xAxis:inRange[0],
+        itemStyle:{color:'rgba(120,120,120,0.10)'},
+        label:{show:true, position:'insideTop', color:'#8a8a8a', fontSize:10} },
+      { xAxis:inRange[inRange.length-1] },
+    ];
+  }).filter(Boolean);
+  if (gapAreas.length && series.length) {
+    series[0].markArea = { silent:true, data:gapAreas };
+  }
+
   chart.setOption({
     ...LIGHT_OPTS,
     tooltip: { trigger:'axis', axisPointer:{type:'cross'}, formatter: params => {
@@ -142,7 +173,7 @@ async function initUtilTrend() {
     legend: { data: labs, textStyle:{color:'#444'}, top: 0 },
     grid: { left:50, right:20, top:36, bottom:30 },
     xAxis: { type:'category', data:dates, axisLabel:{color:'#888',fontSize:10,rotate:30} },
-    yAxis: { type:'value', min:0, max:100, axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
+    yAxis: { type:'value', min:0, max: v => Math.max(10, Math.min(100, Math.ceil(v.max*1.25/5)*5)), axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
     series,
   });
 }
@@ -180,18 +211,30 @@ async function initLeaderboard() {
     fail:    v.fail,
   }));
 
-  function renderLB(id, sorted, valFn) {
+  function renderLB(id, sorted, valFn, noteFn) {
     document.getElementById(id).innerHTML = sorted.slice(0,5).map((m,i) =>
       `<div class="lb-row">
          <span class="lb-rank">${i+1}</span>
-         <span>${m.name}</span>
+         <span class="lb-name">${m.name}${noteFn && noteFn(m) ? `<br><span style="font-size:10px;color:var(--muted);font-weight:400">${noteFn(m)}</span>` : ''}</span>
          <span class="lb-val">${valFn(m)}</span>
        </div>`
     ).join('');
   }
 
   renderLB('lb-util',    [...machines].sort((a,b) => b.util    - a.util),    m => m.util + '%');
-  renderLB('lb-offline', [...machines].sort((a,b) => b.offline - a.offline), m => m.offline + ' times');
+  // A couple of machines (Bambu X1-Carbon units, historically) reconnect to
+  // WiFi every few seconds to a few minutes almost continuously — each
+  // reconnect logs as a fresh offline→online pair, so their count can run
+  // into the thousands and swamp this leaderboard, even though it's a
+  // connectivity quirk rather than the machine actually being down that
+  // often. Flag anything far outside the pack (>10x the group median)
+  // instead of hardcoding machine names, so this adapts if the issue moves
+  // or gets fixed.
+  const offlineVals = machines.map(m => m.offline).filter(v => v > 0).sort((a,b) => a-b);
+  const medOffline = offlineVals.length ? offlineVals[Math.floor(offlineVals.length/2)] : 0;
+  const flapThreshold = Math.max(20, medOffline * 10);
+  renderLB('lb-offline', [...machines].sort((a,b) => b.offline - a.offline), m => m.offline + ' times',
+    m => m.offline > flapThreshold ? '⚠ frequent brief reconnects — likely WiFi, not sustained downtime' : null);
   renderLB('lb-fail',    [...machines].sort((a,b) => b.fail    - a.fail),    m => m.fail + ' events');
 }
 
@@ -315,7 +358,11 @@ async function initFilamentType() {
     .map(v => {
       const color = v.hex ? `#${v.hex}` : CHART_COLORS[(fallbackIdx++) % CHART_COLORS.length];
       const name = v.hex ? `${v.type} · #${v.hex}` : `${v.type} · unknown colour`;
-      return { name, value: v.count, itemStyle: { color, borderColor:'#fff', borderWidth:1 } };
+      // Real filament colours can be white/near-white (e.g. #FFFFFF, #DCDCDC)
+      // which — with the old white slice border — were only visible on
+      // hover (emphasis outline) against this card's white background.
+      // A visible mid-grey border keeps every slice legible at rest.
+      return { name, value: v.count, itemStyle: { color, borderColor:'rgba(0,0,0,0.22)', borderWidth:1.5 } };
     });
 
   chart.setOption({
@@ -380,7 +427,7 @@ async function initBrandCompare() {
     grid: { left:60, right:40, top:44, bottom:30 },
     xAxis: { type:'category', data:brands, axisLabel:{color:'#555',fontSize:12,fontWeight:600} },
     yAxis: [
-      { type:'value', name:'%', max:100, axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
+      { type:'value', name:'%', max: v => Math.max(10, Math.min(100, Math.ceil(v.max*1.4/5)*5)), axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
       { type:'value', name:'events', axisLabel:{color:'#888',fontSize:10}, splitLine:{show:false} },
     ],
     series: [
@@ -510,23 +557,73 @@ async function initSustainability() {
     </p>`;
 }
 
+
+// ── KPI strip (top of Analysis) ───────────────────────────────────────────────
+// Standard dashboard convention: headline numbers first, detail charts after.
+// This week vs last week, computed from machine_daily_summary.
+async function initKPIs() {
+  const el = document.getElementById('kpi-row');
+  if (!el) return;
+  const since = new Date(Date.now() - 14 * 24 * 3600_000).toISOString().split('T')[0];
+  const { data } = await db
+    .from('machine_daily_summary')
+    .select('date, machine_id, utilisation_rate, number_of_jobs, total_print_seconds')
+    .gte('date', since);
+  if (!data || !data.length) { el.style.display = 'none'; return; }
+
+  const cut = new Date(Date.now() - 7 * 24 * 3600_000).toISOString().split('T')[0];
+  const week = data.filter(r => r.date >= cut);
+  const prev = data.filter(r => r.date < cut);
+  const agg = rows => ({
+    util: rows.length ? rows.reduce((s, r) => s + (r.utilisation_rate || 0), 0) / rows.length * 100 : 0,
+    jobs: rows.reduce((s, r) => s + (r.number_of_jobs || 0), 0),
+    hours: rows.reduce((s, r) => s + (r.total_print_seconds || 0), 0) / 3600,
+    machines: new Set(rows.filter(r => (r.number_of_jobs || 0) > 0 || (r.utilisation_rate || 0) > 0)
+                          .map(r => r.machine_id)).size,
+  });
+  const a = agg(week), b = agg(prev);
+
+  const delta = (now, before) => {
+    if (!before) return '<span class="kpi-delta flat">&ndash;</span>';
+    const pct = (now - before) / before * 100;
+    if (Math.abs(pct) < 1) return '<span class="kpi-delta flat">&rarr; steady</span>';
+    return `<span class="kpi-delta ${pct > 0 ? 'up' : 'down'}">${pct > 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(0)}% vs last week</span>`;
+  };
+  const card = (num, label, d) =>
+    `<div class="kpi-card"><div class="kpi-num">${num}</div><div class="kpi-label">${label}</div>${d}</div>`;
+
+  el.innerHTML =
+    card(a.util.toFixed(1) + '%', 'Avg utilisation (7d)', delta(a.util, b.util)) +
+    card(a.jobs, 'Print jobs (7d)', delta(a.jobs, b.jobs)) +
+    card(Math.round(a.hours) + 'h', 'Print time (7d)', delta(a.hours, b.hours)) +
+    card(a.machines, 'Machines active (7d)', delta(a.machines, b.machines));
+}
+
 // ── Init all ──────────────────────────────────────────────────────────────────
 async function initAnalysis() {
-  if (analysisInited) return;
-  analysisInited = true;
+  if (analysisRunning) return;
+  analysisRunning = true;
 
-  await Promise.all([
-    initHeatmap(),
-    initUtilTrend(),
-    initLeaderboard(),
-    initHealthScores(),
-    initFilamentUsage(),
-    initFilamentType(),
-    initBrandCompare(),
-    initJobCountTrend(),
-    initTempProfile(),
-    initSustainability(),
-  ]);
+  try {
+    await Promise.all([
+      initKPIs(),
+      initHeatmap(),
+      initUtilTrend(),
+      initLeaderboard(),
+      initHealthScores(),
+      initFilamentUsage(),
+      initFilamentType(),
+      initBrandCompare(),
+      initJobCountTrend(),
+      initTempProfile(),
+      initSustainability(),
+    ]);
+  } finally {
+    analysisRunning = false;
+    // Belt-and-braces: force a resize once everything has rendered, in case
+    // any chart's container was still settling its layout at init time.
+    setTimeout(() => allCharts.forEach(c => { try { c.resize(); } catch (e) {} }), 50);
+  }
 }
 
 window.addEventListener('tab-analysis', initAnalysis);
