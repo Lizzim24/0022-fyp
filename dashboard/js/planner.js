@@ -12,6 +12,25 @@ let plannerHeatmap = null; // weekday×hour usage rates, cached for reuse
 
 // Machine count used to be hardcoded to 13 in several places on this site;
 // pull it live from Supabase instead (live.js also caches it on window.LAB_MACHINE_COUNT).
+
+// ── Mini printer icons (inline SVG) ───────────────────────────────────────────
+// One recognisable silhouette per model family, reused by the capacity
+// simulator and the maintenance grid so machines read as machines, not text.
+function printerIconSVG(mtype, accent) {
+  const t = String(mtype || '').toLowerCase();
+  const c = accent || '#E84800';
+  if (t.includes('x1') || t.includes('carbon')) return `
+    <svg viewBox="0 0 44 44" width="44" height="44"><rect x="6" y="6" width="32" height="34" rx="3" fill="#1E1E1E"/><rect x="10" y="12" width="24" height="20" rx="2" fill="#3a4a55"/><rect x="6" y="6" width="32" height="4" rx="2" fill="${c}"/><circle cx="22" cy="37" r="1.6" fill="${c}"/></svg>`;
+  if (t.includes('h2d')) return `
+    <svg viewBox="0 0 44 44" width="44" height="44"><rect x="3" y="8" width="38" height="32" rx="3" fill="#1E1E1E"/><rect x="7" y="14" width="30" height="18" rx="2" fill="#3a4a55"/><rect x="3" y="8" width="38" height="4" rx="2" fill="${c}"/><circle cx="18" cy="37" r="1.6" fill="${c}"/><circle cx="26" cy="37" r="1.6" fill="${c}"/></svg>`;
+  if (t.includes('xl')) return `
+    <svg viewBox="0 0 44 44" width="44" height="44"><rect x="5" y="8" width="4" height="30" fill="#1E1E1E"/><rect x="35" y="8" width="4" height="30" fill="#1E1E1E"/><rect x="5" y="8" width="34" height="4" fill="#1E1E1E"/><rect x="9" y="30" width="26" height="4" fill="${c}"/><rect x="18" y="12" width="8" height="8" rx="1" fill="${c}"/></svg>`;
+  return `
+    <svg viewBox="0 0 44 44" width="44" height="44"><rect x="8" y="4" width="28" height="36" rx="3" fill="#1E1E1E"/><rect x="12" y="10" width="20" height="22" rx="2" fill="#3a4a55"/><rect x="8" y="4" width="4" height="36" rx="2" fill="${c}"/><rect x="32" y="4" width="4" height="36" rx="2" fill="${c}"/></svg>`;
+}
+
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
 async function getMachineCount() {
   if (window.LAB_MACHINE_COUNT) return window.LAB_MACHINE_COUNT;
   const { count } = await db.from('machines').select('id', { count: 'exact', head: true });
@@ -71,7 +90,7 @@ async function initBestTime() {
   const tbl = await fetchUsageTable();
 
   if (!tbl) {
-    el.textContent = 'Not enough historical data yet — check back in a few days.';
+    el.textContent = 'Not enough historical data yet. Check back in a few days.';
     return;
   }
 
@@ -100,8 +119,8 @@ async function initBestTime() {
     const pct = Math.round(c.rate * 100);
     const label = i === 0 ? '🥇 Best' : i === 1 ? '🥈 2nd' : '🥉 3rd';
     return `<div style="margin:6px 0">
-      ${label} — <strong>${DAYS[c.wd]} at ${c.hr}:00</strong>
-      <span style="color:var(--muted);font-size:12px"> (${pct}% of machines busy historically)</span>
+      ${label}: <strong>${DAYS[c.wd]} at ${c.hr}:00</strong>
+      <span style="color:var(--muted);font-size:12px"> (${pct}% of machines busy at this time historically)</span>
     </div>`;
   });
 
@@ -141,6 +160,8 @@ async function initCapacitySimulator() {
   slider.value = machineCount;
   countEl.textContent = machineCount;
 
+  const iconsEl = document.getElementById('sim-icons');
+
   function updateSim() {
     const n = parseInt(slider.value);
     countEl.textContent = n;
@@ -148,10 +169,20 @@ async function initCapacitySimulator() {
     const util = Math.min(100, (avgDailyDemandMins / capacity) * 100);
     const utilStr = util.toFixed(1);
     const indicator = util >= 85 ? '🔴 High strain' : util >= 60 ? '🟡 Moderate' : '🟢 Comfortable';
+    const tone = util >= 85 ? '#dc2626' : util >= 60 ? '#ea580c' : '#16a34a';
+
+    // Visual: solid printers = machines the average demand keeps busy,
+    // faded printers = spare headroom at this fleet size.
+    if (iconsEl) {
+      const busy = Math.min(n, Math.ceil((util / 100) * n));
+      iconsEl.innerHTML = Array.from({length: n}, (_, i) =>
+        `<span style="opacity:${i < busy ? 1 : 0.22}" title="${i < busy ? 'kept busy by demand' : 'spare capacity'}">${printerIconSVG('coreone', tone)}</span>`
+      ).join('');
+    }
+
     resultEl.innerHTML = `
-      With <strong>${n} machine${n>1?'s':''}</strong> available 9:00–18:00:<br>
-      Estimated utilisation rate <strong>${utilStr}%</strong> ${indicator}<br>
-      <span style="color:var(--muted);font-size:12px">Based on last 30 days avg demand: ${Math.round(avgDailyDemandMins)} machine-min/day</span>
+      With <strong>${n} machine${n>1?'s':''}</strong> available 9:00–18:00, estimated utilisation is <strong>${utilStr}%</strong> ${indicator}<br>
+      <span style="color:var(--muted);font-size:12px">Solid printers are kept busy by the average demand of the last 30 days (${Math.round(avgDailyDemandMins)} machine-minutes per day). Faded ones are spare capacity.</span>
     `;
   }
 
@@ -160,83 +191,63 @@ async function initCapacitySimulator() {
 }
 
 // ── 3.3 Maintenance Window Suggestion ─────────────────────────────────────────
-let maintenanceMachines = null; // cached so repeat inits don't re-fetch/re-populate the <select>
-
 async function initMaintenanceWindow() {
-  const select = document.getElementById('maintenance-select');
-  const result = document.getElementById('maintenance-result');
+  const grid = document.getElementById('maintenance-grid');
+  if (!grid || grid.dataset.done) return;
 
-  // Populate machine list — only once (guard against duplicate <option>s
-  // piling up now that initPlanner can legitimately run again on a revisit).
-  if (select.options.length <= 1) {
-    const { data } = await db
-      .from('machines')
-      .select('id, name, lab')
-      .order('name');
-    maintenanceMachines = data;
-
-    if (data) {
-      data.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m.id;
-        opt.textContent = `${m.name} (${m.lab})`;
-        select.appendChild(opt);
-      });
-    }
+  const { data: machines } = await db.from('machines')
+    .select('id, name, lab, machine_type')
+    .order('lab').order('name');
+  if (!machines || !machines.length) {
+    grid.innerHTML = '<p style="color:#999;font-size:12px">No machines registered yet.</p>';
+    return;
   }
-  const machines = maintenanceMachines;
 
-  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  // One aggregated call per machine. These hit the hourly matview, so all 13
+  // return in well under a second combined.
+  const since = new Date(Date.now() - 28 * 24 * 3600_000).toISOString();
+  const results = await Promise.all(
+    machines.map(m => db.rpc('usage_by_weekday_hour', { since, machine_filter: m.id }))
+  );
 
-  if (select.dataset.wired) return; // listener only needs to be attached once
-  select.dataset.wired = '1';
-  select.addEventListener('change', async () => {
-    const mid = select.value;
-    if (!mid) { result.textContent = 'Select a machine to see the best maintenance window.'; return; }
-    result.textContent = 'Analysing…';
-
-    const since = new Date(Date.now() - 28 * 24 * 3600_000).toISOString();
-    const { data, error } = await db.rpc('usage_by_weekday_hour', { since, machine_filter: mid });
-    if (error) console.error('initMaintenanceWindow RPC error', error);
+  const cards = machines.map((m, idx) => {
+    const { data } = results[idx] || {};
+    const head = `${printerIconSVG(m.machine_type)}<div><div class="m-name">${m.name}</div><div class="m-lab">${m.lab || ''} · ${m.machine_type || ''}</div>`;
 
     const totalSamples = (data || []).reduce((a, r) => a + Number(r.total), 0);
     if (!data || totalSamples < 10) {
-      result.textContent = 'Not enough data for this machine yet.';
-      return;
+      return `<div class="maint-card">${head}<div class="m-window" style="color:#999">Not enough data yet</div></div></div>`;
     }
 
-    // Build weekday × hour usage for this machine from the aggregated rows
     const total_m = Array.from({length:7}, () => Array(24).fill(0));
     const active_m = Array.from({length:7}, () => Array(24).fill(0));
     for (const row of data) {
-      total_m[row.weekday][row.hour] = row.total;
-      active_m[row.weekday][row.hour] = row.active_count;
+      total_m[row.weekday][row.hour] = Number(row.total);
+      active_m[row.weekday][row.hour] = Number(row.active_count);
     }
 
-    // Find lowest-usage 2-hour window Mon–Fri 8:00–20:00
+    // Lowest-usage 2-hour window, Mon to Fri, 8:00 to 20:00
     let best = null;
     for (let wd = 1; wd <= 5; wd++) {
       for (let hr = 8; hr <= 18; hr++) {
-        const t1 = total_m[wd][hr], t2 = total_m[wd][hr+1] || 0;
-        if (t1 + t2 < 4) continue;
-        const rate = (active_m[wd][hr] + (active_m[wd][hr+1]||0)) / (t1 + t2 || 1);
+        const t = total_m[wd][hr] + (total_m[wd][hr+1] || 0);
+        if (t < 4) continue;
+        const rate = (active_m[wd][hr] + (active_m[wd][hr+1] || 0)) / t;
         if (!best || rate < best.rate) best = { wd, hr, rate };
       }
     }
-
     if (!best) {
-      result.textContent = 'Could not determine a maintenance window (insufficient data).';
-      return;
+      return `<div class="maint-card">${head}<div class="m-window" style="color:#999">Not enough weekday data</div></div></div>`;
     }
-
     const pct = Math.round(best.rate * 100);
-    const machineName = machines?.find(m => m.id === mid)?.name || mid;
-    result.innerHTML = `
-      Recommended maintenance window for <strong>${machineName}</strong>:<br>
-      🔧 <strong>${DAYS[best.wd]} ${best.hr}:00–${best.hr+2}:00</strong>
-      <span style="color:var(--muted);font-size:12px"> (only ${pct}% busy historically — lowest disruption)</span>
-    `;
+    return `<div class="maint-card">${head}
+      <div class="m-window">🔧 <strong>${DAY_NAMES[best.wd].slice(0,3)} ${best.hr}:00–${best.hr+2}:00</strong><br>
+      <span style="color:var(--muted);font-size:11px">${pct}% busy at that time historically</span></div>
+    </div></div>`;
   });
+
+  grid.innerHTML = cards.join('');
+  grid.dataset.done = '1';
 }
 
 // ── 3.4 Average Wait Time ─────────────────────────────────────────────────────
@@ -366,7 +377,7 @@ async function initGuessGame(forceRefresh) {
 
   const machines = await fetchBusyMachines();
   if (machines.length < 2) {
-    card.innerHTML = `<div class="planner-result-text">Not enough machines printing right now to play — check back when a few are busy at once.</div>`;
+    card.innerHTML = `<div class="planner-result-text">Not enough machines printing right now to play. Check back when a few are busy at once.</div>`;
     return;
   }
   // Cap at 6 so the guessing grid stays readable

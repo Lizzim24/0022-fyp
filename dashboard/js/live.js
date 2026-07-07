@@ -257,7 +257,7 @@ async function fetchTaskNames(latest) {
 // Per-machine operational notes, shown on the card when the machine is offline.
 // CoreOne-3's frequent "offline" is planned: staff power it down when unused.
 const MACHINE_NOTES = {
-  'LFL-CoreOne-3': 'Usually powered off when not in use — this is normal',
+  'LFL-CoreOne-3': 'Usually powered off when not in use, so this is normal',
 };
 
 function renderCard(r, stuckNames, manualStops, taskNames) {
@@ -280,7 +280,7 @@ function renderCard(r, stuckNames, manualStops, taskNames) {
   }
   if (r.filament_remain != null) {
     const low = r.filament_remain <= 15;
-    metaLines.push(`<span${low ? ' style="color:var(--red);font-weight:600"' : ''}>${low ? '⚠ ' : ''}Filament ${Math.round(r.filament_remain)}% left${low ? ' — low' : ''}</span>`);
+    metaLines.push(`<span${low ? ' style="color:var(--red);font-weight:600"' : ''}>${low ? '⚠ ' : ''}Filament ${Math.round(r.filament_remain)}% left${low ? ', low' : ''}</span>`);
   }
   if (r.nozzle_diameter) metaLines.push(`⌀ ${Number(r.nozzle_diameter).toFixed(2)} mm nozzle`);
   const remaining = fmt_remaining(r.job_remaining);
@@ -290,7 +290,7 @@ function renderCard(r, stuckNames, manualStops, taskNames) {
   // A machine whose agent has stopped reporting shows as offline (via
   // state_class/state_label above) *and* says how long it's been quiet, so
   // it reads as "agent down" rather than looking like a data glitch.
-  if (r.stale) metaLines.push(`<span style="color:var(--muted)">Last seen ${fmt_ago(r.timestamp)} — check the Pi agent</span>`);
+  if (r.stale) metaLines.push(`<span style="color:var(--muted)">Last seen ${fmt_ago(r.timestamp)}. Check the Pi agent</span>`);
   if ((cls === 'offline' || r.stale) && MACHINE_NOTES[name]) metaLines.push(`<span style="color:var(--muted)">ℹ ${MACHINE_NOTES[name]}</span>`);
 
   const lab = r.machines?.lab || '';
@@ -298,7 +298,7 @@ function renderCard(r, stuckNames, manualStops, taskNames) {
   return `
     <div class="machine-card ${cls}${stuck ? ' stuck' : ''}" data-mid="${r.machine_id}" data-mname="${name}" data-mtype="${mtype}" data-mlab="${lab}">
       <div class="card-name">${name}${stuck ? ' ⚠️' : ''}</div>
-      <div class="card-state ${cls}">${label}${stuck ? ' — may be stuck' : ''}</div>
+      <div class="card-state ${cls}">${label}${stuck ? ', may be stuck' : ''}</div>
       <div class="card-progress-wrap">
         <div class="card-progress-bar" style="width:${cls === 'printing' ? prog : 0}%"></div>
       </div>
@@ -362,8 +362,8 @@ async function renderLive() {
   if (connBanner) connBanner.classList.remove('show');
 
   if (!latest.length) {
-    document.getElementById('grid-lfl').innerHTML   = '<p style="color:var(--muted);font-size:12px">No data — check agent.</p>';
-    document.getElementById('grid-celab').innerHTML = '<p style="color:var(--muted);font-size:12px">No data — check agent.</p>';
+    document.getElementById('grid-lfl').innerHTML   = '<p style="color:var(--muted);font-size:12px">No data yet. Check the agent.</p>';
+    document.getElementById('grid-celab').innerHTML = '<p style="color:var(--muted);font-size:12px">No data yet. Check the agent.</p>';
     return;
   }
 

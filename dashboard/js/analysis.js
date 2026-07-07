@@ -87,11 +87,11 @@ async function initHeatmap() {
 
   chart.setOption({
     ...LIGHT_OPTS,
-    tooltip: { formatter: p => `${days[p.data[1]]} ${p.data[0]}:00 — ${p.data[2]}% utilisation` },
-    grid: { left: 55, right: 20, top: 16, bottom: 30 },
+    tooltip: { formatter: p => `${days[p.data[1]]} ${p.data[0]}:00 · ${p.data[2]}% utilisation` },
+    grid: { left: 55, right: 20, top: 16, bottom: 52 },
     xAxis: { type: 'category', data: Array.from({length:24}, (_,i) => `${i}:00`), axisLabel: { color:'#888', fontSize:10, interval:1 }, splitLine:{show:false} },
     yAxis: { type: 'category', data: days, axisLabel: { color:'#666', fontSize:11 }, splitLine:{show:false} },
-    visualMap: { min:0, max:Math.max(maxRate*100,1), calculable:false, orient:'horizontal', left:'right', bottom:'bottom', show:true,
+    visualMap: { min:0, max:Math.max(maxRate*100,1), calculable:false, orient:'horizontal', right:10, bottom:0, show:true,
       text:[Math.round(Math.max(maxRate*100,1)) + '% busy', 'quiet'], textStyle:{color:'#888',fontSize:10}, itemWidth:10, itemHeight:80,
       inRange: { color: ['#EFEFEC','#fca5a5','#ef4444','#991b1b'] } },
     series: [{ type:'heatmap', data:seriesData, itemStyle:{borderRadius:3,borderWidth:1,borderColor:'#EFEFEC'}, emphasis:{itemStyle:{shadowBlur:6,shadowColor:'rgba(0,0,0,0.3)'}} }],
@@ -111,7 +111,7 @@ async function initUtilTrend() {
     .order('date', { ascending: true });
 
   if (!data || !data.length) {
-    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet — check if daily_summary.py is running',fill:'#999',fontSize:13}}] });
+    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet. Check that daily_summary.py is running.',fill:'#999',fontSize:13}}] });
     return;
   }
 
@@ -171,8 +171,8 @@ async function initUtilTrend() {
       return params[0].name + '<br>' + params.map(p => `${p.marker}${p.seriesName}: ${p.value ?? '—'}%`).join('<br>');
     }},
     legend: { data: labs, textStyle:{color:'#444'}, top: 0 },
-    grid: { left:50, right:20, top:36, bottom:30 },
-    xAxis: { type:'category', data:dates, axisLabel:{color:'#888',fontSize:10,rotate:30} },
+    grid: { left:50, right:20, top:36, bottom:42 },
+    xAxis: { type:'category', data:dates, axisLabel:{color:'#888',fontSize:10,rotate:30,formatter:v=>String(v).slice(5)} },
     yAxis: { type:'value', min:0, max: v => Math.max(10, Math.min(100, Math.ceil(v.max*1.25/5)*5)), axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
     series,
   });
@@ -234,41 +234,75 @@ async function initLeaderboard() {
   const medOffline = offlineVals.length ? offlineVals[Math.floor(offlineVals.length/2)] : 0;
   const flapThreshold = Math.max(20, medOffline * 10);
   renderLB('lb-offline', [...machines].sort((a,b) => b.offline - a.offline), m => m.offline + ' times',
-    m => m.offline > flapThreshold ? '⚠ frequent brief reconnects — likely WiFi, not sustained downtime' : null);
+    m => m.offline > flapThreshold ? '⚠ frequent brief reconnects, likely WiFi rather than sustained downtime' : null);
   renderLB('lb-fail',    [...machines].sort((a,b) => b.fail    - a.fail),    m => m.fail + ' events');
 }
 
 // ── 2.4 Machine Health Score ───────────────────────────────────────────────────
 async function initHealthScores() {
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
-  const { data } = await db
-    .from('machine_daily_summary')
-    .select('machine_id, number_of_possible_failures, number_of_offline_events, number_of_pauses, machines(name)')
-    .gte('date', since);
+  const [{ data }, { data: stops }] = await Promise.all([
+    db.from('machine_daily_summary')
+      .select('machine_id, date, number_of_possible_failures, number_of_offline_events, number_of_pauses, number_of_jobs, machines(name)')
+      .gte('date', since),
+    db.from('machine_events')
+      .select('machine_id')
+      .eq('event_type', 'print_stopped_manual')
+      .gte('start_time', since),
+  ]);
 
   const grid = document.getElementById('health-grid');
-
   if (!data || !data.length) {
     grid.innerHTML = '<p style="color:#999;font-size:12px">No data yet</p>';
     return;
   }
 
-  // Aggregate per machine — 30-day totals
+  const stopCount = {};
+  for (const s of (stops || [])) stopCount[s.machine_id] = (stopCount[s.machine_id] || 0) + 1;
+
+  // 30-day totals per machine, plus how many days it actually reported
   const agg = {};
   for (const row of data) {
     const name = row.machines?.name || row.machine_id;
-    if (!agg[name]) agg[name] = { fail: 0, offline: 0, pauses: 0 };
+    if (!agg[name]) agg[name] = { fail:0, offline:0, pauses:0, jobs:0, stops:stopCount[row.machine_id] || 0, days:new Set() };
     agg[name].fail    += (row.number_of_possible_failures || 0);
     agg[name].offline += (row.number_of_offline_events || 0);
     agg[name].pauses  += (row.number_of_pauses || 0);
+    agg[name].jobs    += (row.number_of_jobs || 0);
+    agg[name].days.add(row.date);
   }
 
-  // Score = 100 − (failures×10) − (offline×3) − (pauses×2), floor 0
+  // Health score v2. Each signal is capped so no single noisy channel can
+  // zero the score on its own:
+  //   failures      ×10, capped at 30   (rare but serious)
+  //   manual stops  as a share of jobs, capped at 25
+  //                 (a print someone had to kill is a quality signal:
+  //                  50%+ of jobs stopped = full penalty)
+  //   offline       ceil(n/10), capped at 15
+  //                 (connectivity noise; X1C-class reconnect storms are a
+  //                  network artefact, not machine health, so they can cost
+  //                  at most 15 points instead of instantly flooring the score)
+  //   pauses        ×1, capped at 10
+  // Machines with fewer than 5 reporting days show "not enough data" instead
+  // of a misleadingly clean score.
   const cards = Object.entries(agg).map(([name, v]) => {
-    const score = Math.max(0, Math.min(100, 100 - v.fail * 10 - v.offline * 3 - v.pauses * 2));
+    if (v.days.size < 5) {
+      return `<div class="health-card">
+        <div class="health-name">${name}</div>
+        <div class="health-score" style="color:#999">–</div>
+        <div style="font-size:10px;color:#999">not enough data (${v.days.size}d)</div>
+      </div>`;
+    }
+    const stopRate = v.jobs > 0 ? v.stops / v.jobs : 0;
+    const pFail    = Math.min(30, v.fail * 10);
+    const pStops   = Math.min(25, Math.round(stopRate * 50));
+    const pOffline = Math.min(15, Math.ceil(v.offline / 10));
+    const pPauses  = Math.min(10, v.pauses);
+    const score = Math.max(0, 100 - pFail - pStops - pOffline - pPauses);
     const cls = score >= 80 ? 'good' : score >= 60 ? 'ok' : 'bad';
     const fillColor = cls === 'good' ? '#16a34a' : cls === 'ok' ? '#ea580c' : '#dc2626';
-    return `<div class="health-card">
+    const tip = `failures −${pFail} · manual stops −${pStops} (${v.stops}/${v.jobs} jobs) · connectivity −${pOffline} · pauses −${pPauses}`;
+    return `<div class="health-card" title="${tip}">
       <div class="health-name">${name}</div>
       <div class="health-score ${cls}">${score}</div>
       <div class="health-bar"><div class="health-fill" style="width:${score}%;background:${fillColor}"></div></div>
@@ -329,27 +363,26 @@ async function initFilamentType() {
   const chart = makeChart('chart-filament-type');
   if (!chart) return;
 
-  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
-  const { data } = await db
-    .from('machine_status_logs')
-    .select('filament_type, filament_color')
-    .gte('timestamp', since)
-    .not('filament_type', 'is', null);
+  // Server-side daily aggregation (filament_daily_usage matview). The old
+  // version pulled raw rows and silently hit the API's 1000-row cap, so every
+  // load showed a different arbitrary sample. This counts ALL printing
+  // samples in the window, so the chart is stable between loads.
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
+  const { data } = await db.rpc('filament_type_counts', { since });
 
   if (!data || !data.length) {
-    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No filament type data yet — will populate as machines run',fill:'#999',fontSize:13}}] });
+    chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No filament type data yet. It will populate as machines run.',fill:'#999',fontSize:13}}] });
     return;
   }
 
-  // Group by (type, colour) so each slice can use the real spool colour
+  // Rows arrive pre-grouped by (type, colour); keep the real spool colour
   const counts = {};
   for (const row of data) {
-    const t = (row.filament_type || 'Unknown').toUpperCase();
-    const rawColor = (row.filament_color || '').trim();
-    const hex6 = /^[0-9a-fA-F]{6,8}$/.test(rawColor) ? rawColor.slice(0,6).toUpperCase() : null;
+    const t = row.filament_type || 'UNKNOWN';
+    const hex6 = row.color_hex && /^[0-9A-F]{6}$/.test(row.color_hex) ? row.color_hex : null;
     const key = `${t}|${hex6 || 'none'}`;
     if (!counts[key]) counts[key] = { type: t, hex: hex6, count: 0 };
-    counts[key].count++;
+    counts[key].count += Number(row.printing_cnt);
   }
 
   let fallbackIdx = 0; // palette index, only used when a record has no real colour
@@ -367,7 +400,7 @@ async function initFilamentType() {
 
   chart.setOption({
     ...LIGHT_OPTS,
-    tooltip: { trigger:'item', formatter: p => `${p.name}<br>${p.value} records (${p.percent}%)` },
+    tooltip: { trigger:'item', formatter: p => `${p.name}<br>${p.value} printing samples over 30 days (${p.percent}%)` },
     legend: { orient:'vertical', right:20, top:'middle', textStyle:{color:'#444',fontSize:11}, itemWidth:12, itemHeight:12 },
     series: [{
       type:'pie',
@@ -464,7 +497,7 @@ async function initJobCountTrend() {
     ...LIGHT_OPTS,
     tooltip: { trigger:'axis', formatter: p => `${p[0].name}<br>${p[0].value} jobs across all machines` },
     grid: { left:45, right:20, top:20, bottom:30 },
-    xAxis: { type:'category', data:dates, axisLabel:{color:'#888',fontSize:10,rotate:30} },
+    xAxis: { type:'category', data:dates, axisLabel:{color:'#888',fontSize:10,rotate:30,formatter:v=>String(v).slice(5)} },
     yAxis: { type:'value', axisLabel:{color:'#888',fontSize:10}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
     series: [{ type:'bar', data:values, itemStyle:{color:CHART_COLORS[0],borderRadius:[3,3,0,0]}, barMaxWidth:18 }],
   });
@@ -553,7 +586,7 @@ async function initSustainability() {
     </div>
     <p style="font-size:11px;color:var(--muted);line-height:1.5">
       Estimated over the last 30 days across all machines. Assumes ~${AVG_PRINTER_WATTS}W average draw per printer
-      and ${UK_GRID_KG_CO2_PER_KWH} kg CO₂e/kWh (approx. UK grid average) — a rough talking-point figure, not a metered measurement.
+      and ${UK_GRID_KG_CO2_PER_KWH} kg CO₂e/kWh (approx. UK grid average). A rough talking-point figure rather than a metered measurement.
     </p>`;
 }
 

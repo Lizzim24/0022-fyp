@@ -51,7 +51,7 @@ nav{
 }
 #mode-toggle .mode-pill{padding:4px 10px;border-radius:14px;transition:all 0.15s}
 #mode-toggle .mode-pill.active{background:var(--text);color:var(--bg)}
-.staff-note{font-size:10px;color:var(--muted);margin:-6px 0 14px;font-style:italic}
+.staff-note{font-size:12px;color:var(--muted);font-style:normal;margin:-12px 0 14px;line-height:1.5}
 
 /* ── Panels ──────────────────────────────────────────── */
 .tab-panel{display:none}
@@ -139,8 +139,8 @@ h1.home-h1 strong{font-weight:700;display:block}
   margin:40px 0 14px;padding-bottom:8px;
   border-bottom:1px solid var(--border);
 }
-.section-title:first-child{margin-top:0}
-.section-sub{font-size:12px;color:var(--muted);margin:-12px 0 12px;max-width:640px;line-height:1.5}
+.tab-panel > .section-title:first-child{margin-top:0}
+.section-sub{font-size:12px;color:var(--muted);margin:-12px 0 14px;line-height:1.5}
 /* ── KPI strip (Analysis) ── */
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:26px}
 .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px}
@@ -148,6 +148,15 @@ h1.home-h1 strong{font-weight:700;display:block}
 .kpi-label{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-top:3px}
 .kpi-delta{font-size:11px;margin-top:5px;font-weight:600;display:block}
 .kpi-delta.up{color:var(--green)}.kpi-delta.down{color:var(--red)}.kpi-delta.flat{color:var(--muted)}
+/* ── Maintenance grid & sim icons ── */
+.maint-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.maint-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:center}
+.maint-card svg{flex:0 0 44px}
+.m-name{font-weight:600;font-size:13px}
+.m-lab{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em}
+.m-window{font-size:12px;margin-top:4px}
+.m-window strong{color:var(--accent)}
+.sim-icons{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
 /* ── Connection banner ── */
 #conn-banner{display:none;background:#B45309;color:#fff;font-size:12px;padding:8px 40px}
 #conn-banner.show{display:block}
@@ -323,7 +332,7 @@ select.machine-select{
   </div>
 </nav>
 
-<div id="conn-banner">Connection hiccup — showing the last known status. Retrying automatically…</div>
+<div id="conn-banner">Connection hiccup. Showing the last known status and retrying automatically…</div>
 
 <!-- ═══════════════════════════════════════════════════
      HOME
@@ -361,7 +370,7 @@ select.machine-select{
       <!-- Minimaps — top-view layout, click to enlarge. Only one is shown at
            a time (matching whichever lab is toggled on above). -->
       <div class="mm" id="mm-lfl">
-        <div class="mm-t">Top View — door wall removed (open side)</div>
+        <div class="mm-t">Top view: door wall removed (open side)</div>
         <svg viewBox="0 0 220 120" style="width:100%" xmlns="http://www.w3.org/2000/svg">
           <!-- Rebuilt from buildLFL()'s actual coordinates, not the original
                reference file's minimap (which had the window-wall/door-side
@@ -423,13 +432,13 @@ select.machine-select{
         </svg>
       </div>
       <div class="mm" id="mm-celab" style="display:none">
-        <div class="mm-t">Top View — CELab layout</div>
+        <div class="mm-t">Top view: CELab layout</div>
         <svg viewBox="0 0 220 140" style="width:100%" xmlns="http://www.w3.org/2000/svg">
           <rect x="1" y="1" width="218" height="138" fill="none" stroke="#ddd" stroke-width="1"/>
           <rect x="2" y="2" width="216" height="4" fill="#B2AFA8" opacity="0.6"/>
           <text x="110" y="10" fill="#998" font-size="4.5" text-anchor="middle">concrete back wall</text>
           <rect x="70" y="20" width="144" height="58" fill="#1B4FC4" rx="1" opacity="0.14" stroke="#1B4FC4" stroke-opacity="0.45" stroke-width="1"/>
-          <text x="142" y="30" fill="#556" font-size="3.6" text-anchor="middle">storage rack — filament spools ×2 shelves above</text>
+          <text x="142" y="30" fill="#556" font-size="3.6" text-anchor="middle">storage rack, filament spools on 2 shelves above</text>
           <rect x="78"  y="38" width="38" height="26" fill="#1E1E1E" rx="1" opacity="0.85"/>
           <text x="97"  y="53" fill="white" font-size="3.8" text-anchor="middle">CoreOne-6</text>
           <rect x="123" y="38" width="38" height="26" fill="#1E1E1E" rx="1" opacity="0.85"/>
@@ -492,7 +501,7 @@ select.machine-select{
 
   <!-- 2.1 Heatmap -->
   <p class="section-title">Usage heatmap</p>
-  <p class="section-sub">When is the lab busiest? Each cell is one hour of the week — darker means more printing.</p>
+  <p class="section-sub">When is the lab busiest? Each cell is one hour of the week, and darker means more printing.</p>
   <div class="card"><div id="chart-heatmap" style="height:280px"></div></div>
 
   <!-- 2.2 Utilisation trend -->
@@ -512,13 +521,13 @@ select.machine-select{
 
   <!-- Sustainability estimate — a good talking point on an exhibit tour, kept visible to everyone -->
   <p class="section-title">Sustainability estimate</p>
-  <p class="section-sub">What a month of printing costs in energy — a rough figure with clearly labelled assumptions.</p>
+  <p class="section-sub">What a month of printing costs in energy. A rough figure with clearly labelled assumptions.</p>
   <div class="card" id="sustainability-result">Loading…</div>
 
   <div data-audience="staff">
     <!-- 2.6 Leaderboard -->
     <p class="section-title">Machine leaderboard</p>
-    <p class="staff-note">Staff view — reliability &amp; usage ranking for lab management.</p>
+    <p class="staff-note">Staff view: reliability and usage ranking for lab management.</p>
     <div class="leaderboard-grid">
       <div class="lb-card">
         <div class="lb-title">🏆 Highest Utilisation</div>
@@ -567,7 +576,7 @@ select.machine-select{
 
   <!-- 3.2 Guess-the-next-free game -->
   <p class="section-title">Guess who's next free 🎲</p>
-  <p class="section-sub">A little game: pick the machine you think finishes first — the data will tell you.</p>
+  <p class="section-sub">A little game: pick the machine you think finishes first, then let the data judge.</p>
   <div class="planner-card" id="guess-game-card">
     <div class="planner-result-text" id="guess-intro">Loading current activity…</div>
   </div>
@@ -582,22 +591,22 @@ select.machine-select{
   <div data-audience="staff">
     <!-- 3.2 Capacity simulator -->
     <p class="section-title">Capacity planning simulator</p>
-    <p class="staff-note">Staff view — planning tool for lab capacity decisions.</p>
+  <p class="section-sub">Drag the slider to see how many machines the current demand actually needs.</p>
+    <p class="staff-note">Staff view: a planning tool for lab capacity decisions.</p>
     <div class="planner-card">
       <div class="slider-row">
         <span class="slider-label">Number of machines: <strong id="sim-count">—</strong></span>
         <input type="range" id="sim-slider" min="1" max="20" value="13">
       </div>
+      <div class="sim-icons" id="sim-icons"></div>
       <div class="planner-result-text" id="sim-result">—</div>
     </div>
 
     <!-- 3.3 Maintenance window -->
     <p class="section-title">Maintenance window suggestion</p>
+    <p class="section-sub">The quietest two-hour weekday slot for every machine, based on four weeks of usage. Do maintenance then and nobody notices.</p>
     <div class="planner-card">
-      <select class="machine-select" id="maintenance-select">
-        <option value="">Select a machine…</option>
-      </select>
-      <div class="planner-result-text" id="maintenance-result">Select a machine to see the best maintenance window.</div>
+      <div class="maint-grid" id="maintenance-grid"><p style="color:#999;font-size:12px">Analysing usage patterns…</p></div>
     </div>
   </div>
 
