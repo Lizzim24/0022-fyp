@@ -18,11 +18,27 @@ let plannerHeatmap = null; // weekday×hour usage rates, cached for reuse
 // simulator and the maintenance grid so machines read as machines, not text.
 function printerIconSVG(mtype, accent) {
   const t = String(mtype || '').toLowerCase();
-  const c = accent || '#E84800';
+  const isBambu = t.includes('x1') || t.includes('carbon') || t.includes('h2d');
+  // Brand-true accents: Bambu green, Prusa orange (overridable)
+  const c = accent || (isBambu ? '#00AE42' : '#E84800');
   if (t.includes('x1') || t.includes('carbon')) return `
-    <svg viewBox="0 0 44 44" width="44" height="44"><rect x="6" y="6" width="32" height="34" rx="3" fill="#1E1E1E"/><rect x="10" y="12" width="24" height="20" rx="2" fill="#3a4a55"/><rect x="6" y="6" width="32" height="4" rx="2" fill="${c}"/><circle cx="22" cy="37" r="1.6" fill="${c}"/></svg>`;
+    <svg viewBox="0 0 44 44" width="44" height="44">
+      <rect x="6" y="5" width="32" height="36" rx="4" fill="#23272B"/>
+      <rect x="10" y="7" width="24" height="5" rx="1.5" fill="#3a4047"/>
+      <rect x="10" y="15" width="24" height="20" rx="2" fill="#4a5560"/>
+      <path d="M12 33 L30 17 L34 17 L16 33 Z" fill="#5d6a76"/>
+      <rect x="10" y="15" width="24" height="20" rx="2" fill="none" stroke="${c}" stroke-width="1.4"/>
+      <circle cx="22" cy="39" r="1.5" fill="${c}"/>
+    </svg>`;
   if (t.includes('h2d')) return `
-    <svg viewBox="0 0 44 44" width="44" height="44"><rect x="3" y="8" width="38" height="32" rx="3" fill="#1E1E1E"/><rect x="7" y="14" width="30" height="18" rx="2" fill="#3a4a55"/><rect x="3" y="8" width="38" height="4" rx="2" fill="${c}"/><circle cx="18" cy="37" r="1.6" fill="${c}"/><circle cx="26" cy="37" r="1.6" fill="${c}"/></svg>`;
+    <svg viewBox="0 0 44 44" width="44" height="44">
+      <rect x="2" y="6" width="40" height="34" rx="4" fill="#23272B"/>
+      <rect x="6" y="8" width="32" height="4" rx="1.5" fill="${c}"/>
+      <rect x="7" y="15" width="30" height="19" rx="2" fill="#4a5560"/>
+      <path d="M9 32 L26 17 L30 17 L13 32 Z" fill="#5d6a76"/>
+      <circle cx="18" cy="38.5" r="1.5" fill="${c}"/>
+      <circle cx="26" cy="38.5" r="1.5" fill="${c}"/>
+    </svg>`;
   if (t.includes('xl')) return `
     <svg viewBox="0 0 44 44" width="44" height="44"><rect x="5" y="8" width="4" height="30" fill="#1E1E1E"/><rect x="35" y="8" width="4" height="30" fill="#1E1E1E"/><rect x="5" y="8" width="34" height="4" fill="#1E1E1E"/><rect x="9" y="30" width="26" height="4" fill="${c}"/><rect x="18" y="12" width="8" height="8" rx="1" fill="${c}"/></svg>`;
   return `

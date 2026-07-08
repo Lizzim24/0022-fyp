@@ -148,6 +148,12 @@ h1.home-h1 strong{font-weight:700;display:block}
 .kpi-label{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-top:3px}
 .kpi-delta{font-size:11px;margin-top:5px;font-weight:600;display:block}
 .kpi-delta.up{color:var(--green)}.kpi-delta.down{color:var(--red)}.kpi-delta.flat{color:var(--muted)}
+/* ── Health card breakdown ── */
+.health-card.clickable{cursor:pointer}
+.health-hint{font-size:9px;color:#bbb;margin-top:4px;letter-spacing:0.04em}
+.health-detail{display:none;font-size:11px;color:var(--muted);line-height:1.7;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;text-align:left}
+.health-card.open .health-detail{display:block}
+.health-card.open .health-hint{display:none}
 /* ── Maintenance grid & sim icons ── */
 .maint-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
 .maint-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:center}
@@ -553,6 +559,7 @@ select.machine-select{
 
     <!-- 2.9 Job count trend -->
     <p class="section-title">Daily job count</p>
+  <p class="section-sub">A job is counted when a print starts. Restarts within 15 minutes of the previous start on the same machine are treated as the same job, because reconnections were found to re-fire the start event.</p>
     <div class="card"><div id="chart-job-count" style="height:240px"></div></div>
 
     <!-- 2.10 Temperature profile -->
@@ -995,6 +1002,23 @@ let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
 (function(){
   const canvas=document.getElementById('three-canvas');
   const wrap=canvas.parentElement;
+  // Kiosk mode (?kiosk=1 or ?no3d=1): exhibition tablets with software
+  // rendering cannot run WebGL smoothly, so show a static render instead of
+  // risking a frozen canvas or an app restart mid-exhibition.
+  const params=new URLSearchParams(location.search);
+  window.KIOSK_MODE=params.has('kiosk')||params.has('no3d');
+  if(window.KIOSK_MODE){
+    const img=document.createElement('img');
+    img.src='img/hero-static.jpg';
+    img.alt='3D view of the lab (static render)';
+    img.style.cssText='width:100%;height:100%;object-fit:contain';
+    img.onerror=()=>{ img.remove(); wrap.style.minHeight='120px'; };
+    canvas.replaceWith(img);
+    [...document.querySelectorAll('button,a')]
+      .filter(el=>/explore in vr/i.test(el.textContent))
+      .forEach(b=>b.style.display='none');
+    return;
+  }
   const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   renderer.setClearColor(0,0);

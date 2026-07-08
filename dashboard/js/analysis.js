@@ -241,7 +241,7 @@ async function initLeaderboard() {
 // ── 2.4 Machine Health Score ───────────────────────────────────────────────────
 async function initHealthScores() {
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
-  const [{ data }, { data: stops }] = await Promise.all([
+  const [{ data }, { data: stops }, { data: jobRows }] = await Promise.all([
     db.from('machine_daily_summary')
       .select('machine_id, date, number_of_possible_failures, number_of_offline_events, number_of_pauses, number_of_jobs, machines(name)')
       .gte('date', since),
@@ -249,6 +249,7 @@ async function initHealthScores() {
       .select('machine_id')
       .eq('event_type', 'print_stopped_manual')
       .gte('start_time', since),
+    db.rpc('deduped_daily_jobs', { since }),
   ]);
 
   const grid = document.getElementById('health-grid');
@@ -260,15 +261,18 @@ async function initHealthScores() {
   const stopCount = {};
   for (const s of (stops || [])) stopCount[s.machine_id] = (stopCount[s.machine_id] || 0) + 1;
 
+  // Deduplicated job counts per machine (raw print_started is inflated by reconnects)
+  const jobCount = {};
+  for (const j of (jobRows || [])) jobCount[j.machine_id] = (jobCount[j.machine_id] || 0) + Number(j.jobs);
+
   // 30-day totals per machine, plus how many days it actually reported
   const agg = {};
   for (const row of data) {
     const name = row.machines?.name || row.machine_id;
-    if (!agg[name]) agg[name] = { fail:0, offline:0, pauses:0, jobs:0, stops:stopCount[row.machine_id] || 0, days:new Set() };
+    if (!agg[name]) agg[name] = { fail:0, offline:0, pauses:0, jobs:jobCount[row.machine_id] || 0, stops:stopCount[row.machine_id] || 0, days:new Set() };
     agg[name].fail    += (row.number_of_possible_failures || 0);
     agg[name].offline += (row.number_of_offline_events || 0);
     agg[name].pauses  += (row.number_of_pauses || 0);
-    agg[name].jobs    += (row.number_of_jobs || 0);
     agg[name].days.add(row.date);
   }
 
@@ -301,11 +305,17 @@ async function initHealthScores() {
     const score = Math.max(0, 100 - pFail - pStops - pOffline - pPauses);
     const cls = score >= 80 ? 'good' : score >= 60 ? 'ok' : 'bad';
     const fillColor = cls === 'good' ? '#16a34a' : cls === 'ok' ? '#ea580c' : '#dc2626';
-    const tip = `failures −${pFail} · manual stops −${pStops} (${v.stops}/${v.jobs} jobs) · connectivity −${pOffline} · pauses −${pPauses}`;
-    return `<div class="health-card" title="${tip}">
+    return `<div class="health-card clickable" onclick="this.classList.toggle('open')">
       <div class="health-name">${name}</div>
       <div class="health-score ${cls}">${score}</div>
       <div class="health-bar"><div class="health-fill" style="width:${score}%;background:${fillColor}"></div></div>
+      <div class="health-hint">tap for breakdown</div>
+      <div class="health-detail">
+        failures &minus;${pFail}<br>
+        manual stops &minus;${pStops} (${v.stops} of ${v.jobs} jobs)<br>
+        connectivity &minus;${pOffline} (${v.offline} events)<br>
+        pauses &minus;${pPauses}
+      </div>
     </div>`;
   });
 
@@ -477,11 +487,10 @@ async function initJobCountTrend() {
   if (!chart) return;
 
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString().split('T')[0];
-  const { data } = await db
-    .from('machine_daily_summary')
-    .select('date, number_of_jobs')
-    .gte('date', since)
-    .order('date', { ascending: true });
+  // Deduplicated server-side: print_started events re-fire on every reconnect
+  // during an active job (verified 2026-07-08: 2,756 raw starts vs ~390 real
+  // jobs in 30 days), so restarts within 15 min count as the same job.
+  const { data } = await db.rpc('deduped_daily_jobs', { since });
 
   if (!data || !data.length) {
     chart.setOption({ ...LIGHT_OPTS, graphic:[{type:'text',left:'center',top:'middle',style:{text:'No daily summary data yet',fill:'#999',fontSize:13}}] });
@@ -489,7 +498,7 @@ async function initJobCountTrend() {
   }
 
   const byDate = {};
-  for (const row of data) byDate[row.date] = (byDate[row.date] || 0) + (row.number_of_jobs || 0);
+  for (const row of data) byDate[row.day] = (byDate[row.day] || 0) + Number(row.jobs || 0);
   const dates = Object.keys(byDate).sort();
   const values = dates.map(d => byDate[d]);
 
@@ -598,15 +607,19 @@ async function initKPIs() {
   const el = document.getElementById('kpi-row');
   if (!el) return;
   const since = new Date(Date.now() - 14 * 24 * 3600_000).toISOString().split('T')[0];
-  const { data } = await db
-    .from('machine_daily_summary')
-    .select('date, machine_id, utilisation_rate, number_of_jobs, total_print_seconds')
-    .gte('date', since);
+  const [{ data }, { data: jobRows }] = await Promise.all([
+    db.from('machine_daily_summary')
+      .select('date, machine_id, utilisation_rate, number_of_jobs, total_print_seconds')
+      .gte('date', since),
+    db.rpc('deduped_daily_jobs', { since }),
+  ]);
   if (!data || !data.length) { el.style.display = 'none'; return; }
 
   const cut = new Date(Date.now() - 7 * 24 * 3600_000).toISOString().split('T')[0];
   const week = data.filter(r => r.date >= cut);
   const prev = data.filter(r => r.date < cut);
+  const jobsWeek = (jobRows || []).filter(r => r.day >= cut).reduce((s, r) => s + Number(r.jobs), 0);
+  const jobsPrev = (jobRows || []).filter(r => r.day < cut).reduce((s, r) => s + Number(r.jobs), 0);
   const agg = rows => ({
     util: rows.length ? rows.reduce((s, r) => s + (r.utilisation_rate || 0), 0) / rows.length * 100 : 0,
     jobs: rows.reduce((s, r) => s + (r.number_of_jobs || 0), 0),
@@ -627,7 +640,7 @@ async function initKPIs() {
 
   el.innerHTML =
     card(a.util.toFixed(1) + '%', 'Avg utilisation (7d)', delta(a.util, b.util)) +
-    card(a.jobs, 'Print jobs (7d)', delta(a.jobs, b.jobs)) +
+    card(jobsWeek, 'Print jobs (7d)', delta(jobsWeek, jobsPrev)) +
     card(Math.round(a.hours) + 'h', 'Print time (7d)', delta(a.hours, b.hours)) +
     card(a.machines, 'Machines active (7d)', delta(a.machines, b.machines));
 }
