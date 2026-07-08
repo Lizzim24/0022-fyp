@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-INPUT_CSV = "hourly_status.csv"
+INPUT_CSV = "hourly_status_2.csv"
 OUTPUT_H = "timeline.h"
 
 MACHINES = [
