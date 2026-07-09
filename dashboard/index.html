@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Digital Twin — LFL & CELab</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1B4FC4">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script defer src="/register-sw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
@@ -522,7 +530,7 @@ select.machine-select{
 
   <!-- 2.10 Bambu vs Prusa comparison — relevant to visitors (matches the physical exhibit split) and staff -->
   <p class="section-title">Bambu vs Prusa</p>
-  <p class="section-sub">Do the two fleets behave differently? Offline counts partly reflect how each brand reports its connection, not just reliability.</p>
+  <p class="section-sub">Do the two fleets behave differently? Offline counts partly reflect how each brand reports its connection — not just reliability.</p>
   <div class="card"><div id="chart-brand-compare" style="height:260px"></div></div>
 
   <!-- Sustainability estimate — a good talking point on an exhibit tour, kept visible to everyone -->
