@@ -1220,14 +1220,18 @@ function initVR(){
   if(vrKeyHandlers){ window.removeEventListener('keydown',vrKeyHandlers.down); window.removeEventListener('keyup',vrKeyHandlers.up); }
   if(vrTouchHandlers){ vrTouchHandlers.teardown(); }
 
-  const renderer=vrRenderer||(vrRenderer=new THREE.WebGLRenderer({canvas,antialias:true}));
-  renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth,innerHeight); renderer.xr.enabled=true;
+  // Same lite-mode discipline as the hero: opt-in via ?lite=1. Skips
+  // antialias, caps DPR at 1, and moves fog closer so distant geometry gets
+  // culled — cuts VR fill-rate on tablets in half.
+  const isLite = new URLSearchParams(location.search).has('lite');
+  const renderer=vrRenderer||(vrRenderer=new THREE.WebGLRenderer({canvas, antialias:!isLite, powerPreference:'low-power'}));
+  renderer.setPixelRatio(isLite ? 1 : Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight); renderer.xr.enabled=true;
   renderer.setClearColor(0xDAD7D0,1);
   // Was 0x111111 (near-black) — made the models unreadable in VR. Match the
   // warm grey/tan tone used for the room floor & the reference model instead.
   const scene=new THREE.Scene(); scene.background=new THREE.Color(0xDAD7D0);
-  scene.fog=new THREE.Fog(0xDAD7D0,14,42);
-  const cam=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,100);
+  scene.fog=new THREE.Fog(0xDAD7D0, isLite?6:14, isLite?18:42);
+  const cam=new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, isLite?22:100);
   scene.add(new THREE.AmbientLight(0xfff8f0,0.5));
   const sun=new THREE.DirectionalLight(0xffeedd,1.2); sun.position.set(14,20,12); scene.add(sun);
   const label = currentLab==='lfl' ? 'LFL' : 'CELab';
@@ -1322,7 +1326,8 @@ function initVR(){
     canvas.removeEventListener('touchend',lookEnd); canvas.removeEventListener('touchcancel',lookEnd);
   }};
 
-  renderer.setAnimationLoop(()=>{
+  let vrSlowFrames = 0, vrLastT = 0;
+  renderer.setAnimationLoop((now)=>{
     if(!renderer.xr.isPresenting){
       const spd=0.07;
       if(keys['w']||keys['arrowup'])    {pos.x+=Math.sin(yaw)*spd; pos.z+=Math.cos(yaw)*spd;}
@@ -1338,6 +1343,22 @@ function initVR(){
       cam.position.copy(pos);
       cam.rotation.order='YXZ'; cam.rotation.y=yaw; cam.rotation.x=pit;
     }
+    // VR frame-rate watchdog: if the tablet can't keep up, exit VR gracefully
+    // instead of freezing. Threshold is 15 fps (VR needs more headroom than
+    // hero 3D — 12 fps is nauseating; 15 is a survivable floor).
+    if (isLite && vrLastT) {
+      const fps = 1000 / (now - vrLastT);
+      if (fps < 15) { vrSlowFrames++; }
+      else vrSlowFrames = Math.max(0, vrSlowFrames - 1);
+      if (vrSlowFrames > 45) {
+        console.warn('VR too slow, exiting');
+        document.getElementById('exit-vr').click();
+        const s = document.getElementById('vr-status');
+        if (s) s.textContent = 'VR paused — this tablet has limited graphics power. Scan the QR code to explore on your phone.';
+        vrSlowFrames = 0; vrLastT = 0; return;
+      }
+    }
+    vrLastT = now;
     renderer.render(scene,cam);
   });
   vrResizeHandler=()=>{renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();};
