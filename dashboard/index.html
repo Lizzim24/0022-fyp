@@ -185,10 +185,31 @@ h1.home-h1 strong{font-weight:700;display:block}
   #conn-banner{padding:8px 16px}
 }
 @media (max-width:640px){
-  .machine-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .machine-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
   .summary-item{flex:1 1 40%}
   .tab-nav{order:3;width:100%;overflow-x:auto}
   .desc{text-align:left}
+  /* Give tall charts more headroom on narrow screens so pie/donut labels and
+     ECharts legends don't get clipped or crushed against each other. */
+  #chart-filament-type{height:340px !important}
+  #chart-brand-compare{height:340px !important}
+  #chart-filament-usage{height:280px !important}
+  #chart-nozzle-bed{height:280px !important}
+  /* Leaderboard: single column, more breathing room per row */
+  .lb-card{padding:14px}
+  .lb-row{padding:8px 0;font-size:13px;flex-wrap:wrap;gap:4px}
+  .lb-name{flex:1 1 100%;padding:0}
+  .lb-rank{width:22px}
+  /* KPI row wraps to 2 columns on phones instead of 4 tiny cards */
+  .kpi-row{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi-card{padding:10px 12px}
+  .kpi-num{font-size:20px}
+  /* Maintenance cards: single column, printer icon smaller */
+  .maint-grid{grid-template-columns:1fr}
+  .maint-card{padding:12px}
+  .maint-card svg{flex:0 0 36px;width:36px;height:36px}
+  /* Section titles: allow subtitle to wrap wider */
+  .section-sub{font-size:11.5px}
 }
 
 /* Card */
@@ -530,7 +551,7 @@ select.machine-select{
 
   <!-- 2.10 Bambu vs Prusa comparison — relevant to visitors (matches the physical exhibit split) and staff -->
   <p class="section-title">Bambu vs Prusa</p>
-  <p class="section-sub">Do the two fleets behave differently? Offline counts partly reflect how each brand reports its connection — not just reliability.</p>
+  <p class="section-sub">Do the two fleets behave differently? Offline counts partly reflect how each brand reports its connection, not just reliability.</p>
   <div class="card"><div id="chart-brand-compare" style="height:260px"></div></div>
 
   <!-- Sustainability estimate — a good talking point on an exhibit tour, kept visible to everyone -->
@@ -1026,12 +1047,30 @@ let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
   const params=new URLSearchParams(location.search);
   window.KIOSK_MODE=params.has('kiosk')||params.has('no3d');
   if(window.KIOSK_MODE){
+    // Static image swaps with the LFL / CELab toggle, matching what the live
+    // 3D scene would show.
     const img=document.createElement('img');
-    img.src='img/hero-static.jpg';
+    const setLabImage = (lab) => { img.src = `img/hero-static-${lab}.jpg`; };
+    setLabImage('lfl');
     img.alt='3D view of the lab (static render)';
     img.style.cssText='width:100%;height:100%;object-fit:contain';
-    img.onerror=()=>{ img.remove(); wrap.style.minHeight='120px'; };
+    img.onerror=()=>{ if (img.src.endsWith('-lfl.jpg')) img.src = 'img/hero-static.jpg'; };
     canvas.replaceWith(img);
+    // Keep the toggle working: reroute the two buttons to swap the image.
+    const btnLfl=document.getElementById('btn-lfl'), btnCel=document.getElementById('btn-celab');
+    const mmLfl=document.getElementById('mm-lfl'), mmCel=document.getElementById('mm-celab');
+    if (btnLfl && btnCel) {
+      btnLfl.addEventListener('click', () => {
+        setLabImage('lfl'); btnLfl.classList.add('active'); btnCel.classList.remove('active');
+        if (mmLfl) mmLfl.style.display = ''; if (mmCel) mmCel.style.display = 'none';
+        window.currentLab = 'lfl';
+      });
+      btnCel.addEventListener('click', () => {
+        setLabImage('celab'); btnCel.classList.add('active'); btnLfl.classList.remove('active');
+        if (mmCel) mmCel.style.display = ''; if (mmLfl) mmLfl.style.display = 'none';
+        window.currentLab = 'celab';
+      });
+    }
     [...document.querySelectorAll('button,a')]
       .filter(el=>/explore in vr/i.test(el.textContent))
       .forEach(b=>b.style.display='none');
