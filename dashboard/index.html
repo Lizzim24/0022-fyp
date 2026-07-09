@@ -187,29 +187,56 @@ h1.home-h1 strong{font-weight:700;display:block}
 @media (max-width:640px){
   .machine-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
   .summary-item{flex:1 1 40%}
-  .tab-nav{order:3;width:100%;overflow-x:auto}
   .desc{text-align:left}
-  /* Give tall charts more headroom on narrow screens so pie/donut labels and
-     ECharts legends don't get clipped or crushed against each other. */
-  #chart-filament-type{height:340px !important}
-  #chart-brand-compare{height:340px !important}
-  #chart-filament-usage{height:280px !important}
-  #chart-nozzle-bed{height:280px !important}
-  /* Leaderboard: single column, more breathing room per row */
+
+  /* Nav bar: shrink logo + horizontal-scroll tabs so nothing overflows */
+  nav{padding:10px 12px;gap:6px}
+  .logo{font-size:10px;letter-spacing:0.12em}
+  .tab-nav{gap:2px;flex-shrink:1;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;min-width:0}
+  .tab-btn{padding:6px 9px;font-size:10px;letter-spacing:0.03em;white-space:nowrap;flex:0 0 auto}
+  #last-updated{display:none}
+  .nav-right{gap:6px;flex-shrink:0}
+
+  /* Give the panel some breathing room from the screen edge */
+  .dash-panel{padding:14px 10px}
+  .section-title{padding-right:4px}
+
+  /* Leaderboard: FORCE single column (override the 1080px rule) and let each
+     row line-wrap cleanly so the ⚠ note text doesn't stack character-per-line */
+  .leaderboard-grid{grid-template-columns:1fr !important;gap:10px}
   .lb-card{padding:14px}
   .lb-row{padding:8px 0;font-size:13px;flex-wrap:wrap;gap:4px}
-  .lb-name{flex:1 1 100%;padding:0}
-  .lb-rank{width:22px}
-  /* KPI row wraps to 2 columns on phones instead of 4 tiny cards */
+  .lb-name{flex:1 1 100%;padding:0;min-width:0;word-break:normal;overflow-wrap:break-word}
+  .lb-rank{width:22px;flex:0 0 auto}
+  .lb-val{flex:0 0 auto;text-align:right}
+
+  /* Charts: taller so ECharts legends/pie labels fit; brand-compare needs
+     even more because it stacks 3 series legends */
+  #chart-heatmap{height:260px !important}
+  #chart-util-trend{height:280px !important}
+  #chart-filament-type{height:420px !important}
+  #chart-brand-compare{height:400px !important}
+  #chart-filament-usage{height:280px !important}
+  #chart-nozzle-bed{height:280px !important}
+  #chart-job-count{height:260px !important}
+
+  /* KPI row: 2×2 grid instead of 4 tiny cards */
   .kpi-row{grid-template-columns:1fr 1fr;gap:8px}
   .kpi-card{padding:10px 12px}
   .kpi-num{font-size:20px}
-  /* Maintenance cards: single column, printer icon smaller */
+
+  /* Maintenance: single column, smaller icons */
   .maint-grid{grid-template-columns:1fr}
   .maint-card{padding:12px}
   .maint-card svg{flex:0 0 36px;width:36px;height:36px}
-  /* Section titles: allow subtitle to wrap wider */
+
+  /* Health cards: fit more per row on phone */
+  .health-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+  .health-card{padding:10px}
+
   .section-sub{font-size:11.5px}
+  /* Prevent any long unbroken string (URL, colour hex) from forcing horizontal scroll */
+  body{overflow-x:hidden}
 }
 
 /* Card */
@@ -1243,9 +1270,50 @@ let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
 // controls. Rebuilt fresh each time VR is entered so switching labs between
 // visits always shows the right one.
 let vrRenderer=null, vrResizeHandler=null, vrKeyHandlers=null, vrTouchHandlers=null;
-document.getElementById('enter-vr').addEventListener('click',()=>{
-  document.getElementById('vr-overlay').classList.add('active'); initVR();
+document.getElementById('enter-vr').addEventListener('click', () => {
+  // VR spins up a second WebGL renderer at high pixel density; on low-power
+  // tablets it exhausts GPU memory, and even after exit the graphics driver
+  // is left in a degraded state that then kills the hero 3D scene. Verified
+  // 9 Jul 2026: skipping VR entirely keeps the hero 3D healthy indefinitely.
+  //
+  // Rule: on kiosk / lite / explicit no-VR URLs, show a QR-code card that
+  // sends the visitor to a full-power device (their phone) instead.
+  const p = new URLSearchParams(location.search);
+  if (p.has('kiosk') || p.has('lite') || p.has('novr')) {
+    showVRRedirect();
+    return;
+  }
+  document.getElementById('vr-overlay').classList.add('active');
+  initVR();
 });
+
+function showVRRedirect() {
+  if (document.getElementById('vr-redirect')) {
+    document.getElementById('vr-redirect').style.display = 'flex'; return;
+  }
+  // The QR points to the plain URL (no ?kiosk / ?lite), so a phone opens the
+  // full 3D + VR experience at native resolution.
+  const target = location.origin + location.pathname;
+  const overlay = document.createElement('div');
+  overlay.id = 'vr-redirect';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:28px 32px;max-width:420px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
+      <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#1B4FC4;font-weight:700;margin-bottom:6px">VR walkthrough</div>
+      <h2 style="margin:0 0 12px;font-size:20px;color:#1B2130">Continue on your phone</h2>
+      <p style="margin:0 0 18px;color:#556;font-size:13px;line-height:1.55">
+        The exhibition tablet has limited graphics power for immersive VR. Scan the QR code with your phone to open the full 3D walkthrough at native quality.
+      </p>
+      <img alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=${encodeURIComponent(target)}" width="180" height="180" style="border-radius:8px;background:#fff;padding:6px;border:1px solid #E5E1D8">
+      <p style="margin:16px 0 0;color:#8a8a8a;font-size:11px">${target}</p>
+      <button id="vr-redirect-close" style="margin-top:18px;padding:8px 22px;border:1px solid #1B2130;background:#1B2130;color:#fff;border-radius:20px;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer">Close</button>
+    </div>
+  `;
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,30,0.72);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  document.body.appendChild(overlay);
+  const close = () => { overlay.style.display = 'none'; };
+  document.getElementById('vr-redirect-close').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+}
 document.getElementById('exit-vr').addEventListener('click',()=>{
   document.getElementById('vr-overlay').classList.remove('active');
 });

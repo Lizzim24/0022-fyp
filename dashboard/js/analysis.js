@@ -411,11 +411,13 @@ async function initFilamentType() {
   chart.setOption({
     ...LIGHT_OPTS,
     tooltip: { trigger:'item', formatter: p => `${p.name}<br>${p.value} printing samples over 30 days (${p.percent}%)` },
-    legend: { orient:'vertical', right:20, top:'middle', textStyle:{color:'#444',fontSize:11}, itemWidth:12, itemHeight:12 },
+    legend: window.innerWidth < 640
+      ? { orient:'horizontal', bottom:0, left:'center', textStyle:{color:'#444',fontSize:10}, itemWidth:10, itemHeight:10, type:'scroll', pageIconSize:10 }
+      : { orient:'vertical', right:20, top:'middle', textStyle:{color:'#444',fontSize:11}, itemWidth:12, itemHeight:12 },
     series: [{
       type:'pie',
-      radius:['38%','70%'],
-      center:['38%','50%'],
+      radius: window.innerWidth < 640 ? ['30%','52%'] : ['38%','70%'],
+      center: window.innerWidth < 640 ? ['50%','40%'] : ['38%','50%'],
       data:pieData,
       label:{ show:false },
       emphasis:{ label:{show:true,fontSize:13,fontWeight:'bold'}, itemStyle:{shadowBlur:10,shadowOffsetX:0,shadowColor:'rgba(0,0,0,0.15)'} },
@@ -466,8 +468,10 @@ async function initBrandCompare() {
   chart.setOption({
     ...LIGHT_OPTS,
     tooltip: { trigger:'axis', axisPointer:{type:'shadow'} },
-    legend: { data:['Avg utilisation %','Possible failures (30d)','Offline events (30d)'], textStyle:{color:'#444',fontSize:11}, top:0 },
-    grid: { left:60, right:40, top:44, bottom:30 },
+    legend: window.innerWidth < 640
+      ? { data:['Avg utilisation %','Possible failures (30d)','Offline events (30d)'], textStyle:{color:'#444',fontSize:10}, top:0, itemGap:6, itemWidth:12, itemHeight:10, orient:'horizontal' }
+      : { data:['Avg utilisation %','Possible failures (30d)','Offline events (30d)'], textStyle:{color:'#444',fontSize:11}, top:0 },
+    grid: window.innerWidth < 640 ? { left:44, right:44, top:76, bottom:26 } : { left:60, right:40, top:44, bottom:30 },
     xAxis: { type:'category', data:brands, axisLabel:{color:'#555',fontSize:12,fontWeight:600} },
     yAxis: [
       { type:'value', name:'%', max: v => Math.max(10, Math.min(100, Math.ceil(v.max*1.4/5)*5)), axisLabel:{color:'#888',fontSize:10,formatter:'{value}%'}, splitLine:{lineStyle:{color:'rgba(0,0,0,0.06)'}} },
