@@ -1005,6 +1005,16 @@ function buildCELab(scene,opts){
   scene.add(g);
 }
 
+function injectKioskNotice() {
+  if (document.getElementById('kiosk-notice')) return;
+  const url = location.origin + location.pathname;
+  const note = document.createElement('div');
+  note.id = 'kiosk-notice';
+  note.innerHTML = `<div style="flex:1;min-width:200px"><strong style="color:#1B4FC4">3D model shown as a still image</strong><br><span>The exhibition tablet has limited graphics power, so the interactive 3D scene is replaced with a rendered view here. For the full explorable model, scan the QR code with your phone.</span></div><img alt="QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=0&data=${encodeURIComponent(url)}" width="88" height="88" style="border-radius:6px;background:#fff;padding:4px;flex:0 0 auto">`;
+  note.style.cssText = 'display:flex;align-items:center;gap:16px;background:#FFF7ED;border:1px solid #F4C48A;border-radius:10px;padding:12px 16px;margin:14px 20px 0;font-size:12px;line-height:1.5;color:#7A4A1B';
+  const home = document.getElementById('tab-home') || document.querySelector('.dash-panel');
+  if (home) home.insertBefore(note, home.firstChild);
+}
 // Hero renderer
 let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
 (function(){
@@ -1025,10 +1035,14 @@ let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
     [...document.querySelectorAll('button,a')]
       .filter(el=>/explore in vr/i.test(el.textContent))
       .forEach(b=>b.style.display='none');
+    injectKioskNotice();
     return;
   }
-  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  // Lite mode is opt-in via ?lite=1 (used by the exhibition tablet).
+  // Phones and desktops get full-fidelity rendering by default.
+  const isLite = params.has('lite');
+  const renderer=new THREE.WebGLRenderer({canvas, antialias:!isLite, alpha:true, powerPreference:'low-power'});
+  renderer.setPixelRatio(isLite ? 1 : Math.min(devicePixelRatio,2));
   renderer.setClearColor(0,0);
   const scene=new THREE.Scene();
   const f=9;
@@ -1147,12 +1161,42 @@ let currentLab='lfl'; // tracked so VR can build whichever lab is on screen
     if(info) window.openTradingCard(info.id, found.userData.label, info.type, info.lab);
   });
 
-  (function animate(){
-    requestAnimationFrame(animate);
+  // On-demand rendering + FPS watchdog for low-power tablets
+  let renderNeeded = true;
+  window.request3DRender = () => { renderNeeded = true; };
+  let slowFrames = 0, sampling = false, lastFrameT = 0;
+  function fallbackToStatic() {
+    console.warn('3D scene too slow, falling back to static image');
+    try { renderer.dispose(); } catch(e){}
+    const img = document.createElement('img');
+    img.src = 'img/hero-static.jpg';
+    img.alt = '3D view of the lab (static render)';
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+    img.onerror = () => { img.replaceWith(Object.assign(document.createElement('div'),{textContent:'3D view unavailable on this device — scan the QR code to explore on your phone.',style:'padding:24px;text-align:center;color:#888;font-size:13px'})); };
+    canvas.replaceWith(img);
+    [...document.querySelectorAll('button,a')].filter(el=>/explore in vr/i.test(el.textContent)).forEach(b=>b.style.display='none');
+    injectKioskNotice();
+  }
+  function renderOnce(now) {
     const r=34;
     cam.position.set(Math.sin(rotY)*Math.cos(rotX)*r,Math.sin(rotX)*r,Math.cos(rotY)*Math.cos(rotX)*r);
     cam.lookAt(0,1.5,0); renderer.render(scene,cam);
-  })();
+    if (sampling && lastFrameT) {
+      const fps = 1000 / (now - lastFrameT);
+      if (fps < 12) { slowFrames++; if (slowFrames > 30) { fallbackToStatic(); return; } }
+      else slowFrames = Math.max(0, slowFrames - 1);
+    }
+    lastFrameT = now;
+  }
+  function loop(now) {
+    if (renderNeeded) { renderNeeded = false; renderOnce(now); }
+    if (document.visibilityState === 'visible') requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { renderNeeded = true; requestAnimationFrame(loop); } });
+  ['pointermove','pointerdown','wheel','touchmove'].forEach(ev =>
+    canvas.addEventListener(ev, () => { renderNeeded = true; sampling = true; slowFrames = 0; }, {passive:true}));
+  canvas.addEventListener('pointerup', () => { setTimeout(()=>{ sampling = false; lastFrameT = 0; }, 500); });
 })();
 
 // VR — builds whichever lab is currently selected on the home hero (used to
