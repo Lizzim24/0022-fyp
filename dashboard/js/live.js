@@ -96,10 +96,45 @@ const STALE_MS = 5 * 60 * 1000;
 // "No data" for one bad request every ~10s poll cycle), or an array — which,
 // now that every machine always has a row via the RPC, should basically
 // never legitimately be empty.
+// ── Snapshot fallback ────────────────────────────────────────────────────
+// If the Supabase call fails (venue Wi-Fi flakiness, database asleep, or the
+// tablet is briefly offline), fall back to the JSON snapshot bundled with
+// the site. A one-time banner tells the visitor what they're looking at is
+// a saved view, not live.
+let SNAPSHOT_CACHE = null;
+async function loadSnapshot() {
+  if (SNAPSHOT_CACHE !== null) return SNAPSHOT_CACHE;
+  try {
+    const res = await fetch('data/snapshot.json');
+    SNAPSHOT_CACHE = res.ok ? await res.json() : null;
+  } catch { SNAPSHOT_CACHE = null; }
+  return SNAPSHOT_CACHE;
+}
+function showSnapshotBanner(exportedAt) {
+  if (document.getElementById('snap-banner')) return;
+  const when = exportedAt ? new Date(exportedAt).toLocaleString('en-GB', {dateStyle:'medium', timeStyle:'short'}) : '';
+  const b = document.createElement('div');
+  b.id = 'snap-banner';
+  b.textContent = `Live database unreachable — showing a saved snapshot from ${when}.`;
+  b.style.cssText = 'background:#B45309;color:#fff;font-size:12px;padding:8px 40px;text-align:center';
+  document.body.insertBefore(b, document.body.firstChild);
+}
+
 async function fetchLatest() {
   const { data, error } = await db.rpc('latest_status_per_machine');
-  if (error) { console.error('fetchLatest RPC error', error); return null; }
-  if (!data) return null;
+  if (error || !data) {
+    console.warn('fetchLatest failed, trying snapshot', error);
+    const snap = await loadSnapshot();
+    if (snap && snap.latest) {
+      showSnapshotBanner(snap.exported_at);
+      // Massage the snapshot rows into the same shape the rest of the code expects
+      return snap.latest.map(r => {
+        const ageMs = r.timestamp ? Date.now() - new Date(r.timestamp).getTime() : Infinity;
+        return { ...r, online: !!r.online, stale: ageMs > STALE_MS };
+      });
+    }
+    return null;
+  }
 
   return data.map(r => {
     const ageMs = r.timestamp ? Date.now() - new Date(r.timestamp).getTime() : Infinity;
@@ -501,3 +536,7 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape') closeTradingCa
 refreshMachineCount();
 renderLive();
 setInterval(renderLive, REFRESH_MS);
+
+
+window.loadSnapshot = loadSnapshot;
+window.showSnapshotBanner = showSnapshotBanner;

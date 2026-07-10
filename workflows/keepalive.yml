@@ -1,0 +1,14 @@
+name: keep-supabase-alive
+on:
+  schedule:
+    - cron: "0 9 * * 1,4"  # MON & THU 9:00 UTC
+  workflow_dispatch:        # Allow manual trigger from GitHub UI
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query one row
+        run: |
+          curl -sf "https://droqokuoocckdnqashpi.supabase.co/rest/v1/machines?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
