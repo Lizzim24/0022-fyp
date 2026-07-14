@@ -7,10 +7,15 @@
 const REFRESH_MS = 10_000;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function fmt_remaining(secs) {
-  if (secs == null || secs <= 0) return null;
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
+// NOTE: job_remaining from the Pi agents is already in MINUTES, not seconds
+// (verified against real print run durations — e.g. a job reporting
+// job_remaining=76 actually finished ~76 minutes later, not 76 seconds).
+// This used to be treated as seconds here, which made every ETA display
+// ~60x too short (e.g. "1h16m left" showed as "1m left").
+function fmt_remaining(mins) {
+  if (mins == null || mins <= 0) return null;
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
@@ -96,45 +101,10 @@ const STALE_MS = 5 * 60 * 1000;
 // "No data" for one bad request every ~10s poll cycle), or an array — which,
 // now that every machine always has a row via the RPC, should basically
 // never legitimately be empty.
-// ── Snapshot fallback ────────────────────────────────────────────────────
-// If the Supabase call fails (venue Wi-Fi flakiness, database asleep, or the
-// tablet is briefly offline), fall back to the JSON snapshot bundled with
-// the site. A one-time banner tells the visitor what they're looking at is
-// a saved view, not live.
-let SNAPSHOT_CACHE = null;
-async function loadSnapshot() {
-  if (SNAPSHOT_CACHE !== null) return SNAPSHOT_CACHE;
-  try {
-    const res = await fetch('data/snapshot.json');
-    SNAPSHOT_CACHE = res.ok ? await res.json() : null;
-  } catch { SNAPSHOT_CACHE = null; }
-  return SNAPSHOT_CACHE;
-}
-function showSnapshotBanner(exportedAt) {
-  if (document.getElementById('snap-banner')) return;
-  const when = exportedAt ? new Date(exportedAt).toLocaleString('en-GB', {dateStyle:'medium', timeStyle:'short'}) : '';
-  const b = document.createElement('div');
-  b.id = 'snap-banner';
-  b.textContent = `Live database unreachable — showing a saved snapshot from ${when}.`;
-  b.style.cssText = 'background:#B45309;color:#fff;font-size:12px;padding:8px 40px;text-align:center';
-  document.body.insertBefore(b, document.body.firstChild);
-}
-
 async function fetchLatest() {
   const { data, error } = await db.rpc('latest_status_per_machine');
-  if (error || !data) {
-    console.warn('fetchLatest failed, trying snapshot', error);
-    const snap = await loadSnapshot();
-    if (snap && snap.latest) {
-      showSnapshotBanner(snap.exported_at);
-      // Massage the snapshot rows into the same shape the rest of the code expects
-      return snap.latest.map(r => {
-        const ageMs = r.timestamp ? Date.now() - new Date(r.timestamp).getTime() : Infinity;
-        return { ...r, online: !!r.online, stale: ageMs > STALE_MS };
-      });
-    }
-    return null;
-  }
+  if (error) { console.error('fetchLatest RPC error', error); return null; }
+  if (!data) return null;
 
   return data.map(r => {
     const ageMs = r.timestamp ? Date.now() - new Date(r.timestamp).getTime() : Infinity;
@@ -289,12 +259,6 @@ async function fetchTaskNames(latest) {
 }
 
 // ── Render machine card ────────────────────────────────────────────────────────
-// Per-machine operational notes, shown on the card when the machine is offline.
-// CoreOne-3's frequent "offline" is planned: staff power it down when unused.
-const MACHINE_NOTES = {
-  'LFL-CoreOne-3': 'Usually powered off when not in use, so this is normal',
-};
-
 function renderCard(r, stuckNames, manualStops, taskNames) {
   const name  = r.machines?.name || r.machine_id;
   const cls   = state_class(r);
@@ -315,7 +279,7 @@ function renderCard(r, stuckNames, manualStops, taskNames) {
   }
   if (r.filament_remain != null) {
     const low = r.filament_remain <= 15;
-    metaLines.push(`<span${low ? ' style="color:var(--red);font-weight:600"' : ''}>${low ? '⚠ ' : ''}Filament ${Math.round(r.filament_remain)}% left${low ? ', low' : ''}</span>`);
+    metaLines.push(`<span${low ? ' style="color:var(--red);font-weight:600"' : ''}>${low ? '⚠ ' : ''}Filament ${Math.round(r.filament_remain)}% left${low ? ' — low' : ''}</span>`);
   }
   if (r.nozzle_diameter) metaLines.push(`⌀ ${Number(r.nozzle_diameter).toFixed(2)} mm nozzle`);
   const remaining = fmt_remaining(r.job_remaining);
@@ -325,15 +289,14 @@ function renderCard(r, stuckNames, manualStops, taskNames) {
   // A machine whose agent has stopped reporting shows as offline (via
   // state_class/state_label above) *and* says how long it's been quiet, so
   // it reads as "agent down" rather than looking like a data glitch.
-  if (r.stale) metaLines.push(`<span style="color:var(--muted)">Last seen ${fmt_ago(r.timestamp)}. Check the Pi agent</span>`);
-  if ((cls === 'offline' || r.stale) && MACHINE_NOTES[name]) metaLines.push(`<span style="color:var(--muted)">ℹ ${MACHINE_NOTES[name]}</span>`);
+  if (r.stale) metaLines.push(`<span style="color:var(--muted)">Last seen ${fmt_ago(r.timestamp)} — check the Pi agent</span>`);
 
   const lab = r.machines?.lab || '';
   const mtype = r.machines?.machine_type || '';
   return `
     <div class="machine-card ${cls}${stuck ? ' stuck' : ''}" data-mid="${r.machine_id}" data-mname="${name}" data-mtype="${mtype}" data-mlab="${lab}">
       <div class="card-name">${name}${stuck ? ' ⚠️' : ''}</div>
-      <div class="card-state ${cls}">${label}${stuck ? ', may be stuck' : ''}</div>
+      <div class="card-state ${cls}">${label}${stuck ? ' — may be stuck' : ''}</div>
       <div class="card-progress-wrap">
         <div class="card-progress-bar" style="width:${cls === 'printing' ? prog : 0}%"></div>
       </div>
@@ -388,17 +351,11 @@ async function renderLive() {
   // "No data — check agent." for that cycle, which is why the page seemed
   // to randomly flash empty even though the summary numbers (rendered on an
   // earlier successful poll) still looked fine.
-  const connBanner = document.getElementById('conn-banner');
-  if (latest === null) {
-    console.warn('renderLive: skipping this poll, fetch failed');
-    if (connBanner) connBanner.classList.add('show');
-    return;
-  }
-  if (connBanner) connBanner.classList.remove('show');
+  if (latest === null) { console.warn('renderLive: skipping this poll, fetch failed'); return; }
 
   if (!latest.length) {
-    document.getElementById('grid-lfl').innerHTML   = '<p style="color:var(--muted);font-size:12px">No data yet. Check the agent.</p>';
-    document.getElementById('grid-celab').innerHTML = '<p style="color:var(--muted);font-size:12px">No data yet. Check the agent.</p>';
+    document.getElementById('grid-lfl').innerHTML   = '<p style="color:var(--muted);font-size:12px">No data — check agent.</p>';
+    document.getElementById('grid-celab').innerHTML = '<p style="color:var(--muted);font-size:12px">No data — check agent.</p>';
     return;
   }
 
@@ -439,14 +396,8 @@ async function renderLive() {
   if (homePrinting) homePrinting.textContent = printing;
 
   // 1.4 Split by lab
-  // Sort so what needs eyes comes first: printing → needs attention → done/idle → offline
-  const CLS_ORDER = { printing:0, paused:1, attention:1, error:1, stopped:1, preparing:2, finished:2, idle:3, offline:4 };
-  const byPriority = (x, y) =>
-    ((CLS_ORDER[state_class(x)] ?? 3) - (CLS_ORDER[state_class(y)] ?? 3)) ||
-    String(x.machines?.name || '').localeCompare(String(y.machines?.name || ''));
-
-  const lfl   = latest.filter(r => r.machines?.lab === 'LFL').sort(byPriority);
-  const celab = latest.filter(r => r.machines?.lab === 'CELab').sort(byPriority);
+  const lfl   = latest.filter(r => r.machines?.lab === 'LFL');
+  const celab = latest.filter(r => r.machines?.lab === 'CELab');
 
   document.getElementById('grid-lfl').innerHTML =
     (lfl.length ? lfl : latest.filter(r => !r.machines?.lab || r.machines?.lab === 'LFL'))
@@ -536,7 +487,3 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape') closeTradingCa
 refreshMachineCount();
 renderLive();
 setInterval(renderLive, REFRESH_MS);
-
-
-window.loadSnapshot = loadSnapshot;
-window.showSnapshotBanner = showSnapshotBanner;
