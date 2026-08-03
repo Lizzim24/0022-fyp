@@ -36,6 +36,8 @@ prev_state        = {}  # name -> last known state dict
 bambu_clients     = {}  # name -> paho client
 ams_cache         = {}  # name -> {"filament_type": str} from last AMS payload
 last_print_progress = {}  # name -> last known print progress
+current_job = {}  # name -> filename of the job currently on the bed (None = idle).
+                  # Track job IDENTITY so print_started fires once per real job.
 
 
 def get_db():
@@ -172,30 +174,49 @@ def insert_event(conn, name, event_type, severity="info", description="", metada
 # ── Event detection (state-change based) ─────────────────────
 def detect_events(conn, name, data, online):
     prev = prev_state.get(name, {})
-
     if prev.get("online") is True and not online:
         insert_event(conn, name, "machine_offline", "warning", f"{name} went offline")
     elif prev.get("online") is False and online:
         insert_event(conn, name, "machine_online", "info", f"{name} came back online")
-
     if online:
-        if not prev.get("active") and data.get("active"):
-            insert_event(conn, name, "print_started", "info",
-                         f"Print started: {data.get('filename', 'unknown')}",
-                         {"filename": data.get("filename")})
-        if prev.get("active") and not data.get("active") and prev.get("state") == "PRINTING":
-            if data.get("state") == "FINISHED":
+        state    = (data.get("state") or "").upper()
+        prev_s   = (prev.get("state") or "").upper()
+        printing = state == "PRINTING"
+        job_key  = data.get("filename") or None
+        tracked  = current_job.get(name)
+        progress = data.get("progress")
+        # print_started fires ONCE per real job, keyed on job identity + progress.
+        # A genuine new job is caught near its start (low progress); a job already
+        # running when first observed (after a restart, or entering PRINTING from a
+        # transient UNKNOWN/PREPARING state mid-job) is adopted silently. This
+        # replaces an earlier version that gated on prev_state being a clean idle
+        # state, which suppressed real Bambu starts (Bambu enters PRINTING from
+        # UNKNOWN, not IDLE).
+        if printing:
+            if tracked is None:
+                if progress is None or progress <= 10:
+                    insert_event(conn, name, "print_started", "info",
+                                 f"Print started: {job_key or 'unknown'}",
+                                 {"filename": job_key})
+                current_job[name] = job_key or "unknown"
+            elif job_key is not None and job_key != tracked:
+                insert_event(conn, name, "print_started", "info",
+                             f"Print started: {job_key}",
+                             {"filename": job_key})
+                current_job[name] = job_key
+        if prev.get("active") and not data.get("active") and prev_s == "PRINTING":
+            if state == "FINISHED":
                 insert_event(conn, name, "print_completed", "info", "Print completed")
-            elif data.get("state") in ("ERROR", "FAILED", "STOPPED"):
+            elif state in ("ERROR", "FAILED", "STOPPED"):
                 insert_event(conn, name, "possible_failure", "error",
-                             f"Print ended with state: {data.get('state')}")
+                             f"Print ended with state: {state}")
+        if state in ("IDLE", "FINISHED", "FINISH", "STOPPED", "ERROR", "FAILED"):
+            current_job.pop(name, None)
         if prev.get("state") == "PRINTING" and data.get("state") == "PAUSED":
             insert_event(conn, name, "print_paused", "info", "Print paused")
         if prev.get("state") == "PAUSED" and data.get("state") == "PRINTING":
             insert_event(conn, name, "print_resumed", "info", "Print resumed")
-
     prev_state[name] = {**data, "online": online}
-
 
 # ══════════════════════════════════════════════════════════════
 #  Bambu local MQTT subscription

@@ -196,36 +196,46 @@ def log_print_stop_event(conn, name, progress):
         log.error(f"  {name}: log_print_stop_event failed — {e}")
 
 # ── Event detection ───────────────────────────────────────────
+current_job = {}  # name -> filename of current job (None = idle). Fire print_started once per job.
 def detect_events(conn, name, status_data, job_data, online):
-    p           = (status_data or {}).get("printer", {})
+    p    = (status_data or {}).get("printer", {})
     curr_state  = p.get("state", "UNKNOWN")
     curr_active = job_data is not None
-    prev        = prev_state.get(name, {})
-
-    # Online / offline transitions
+    prev = prev_state.get(name, {})
     if prev.get("online") is True and not online:
-        insert_event(conn, name, "machine_offline", "warning", f"{name} went offline")
+        insert_event(conn, name, "machine_offline", "warning",
+                     f"{name} went offline")
     elif prev.get("online") is False and online:
-        insert_event(conn, name, "machine_online", "info", f"{name} came back online")
-
+        insert_event(conn, name, "machine_online", "info",
+                     f"{name} came back online")
     if online and status_data:
         prev_s = prev.get("state")
-
-        # State change
         if prev_s and prev_s != curr_state:
             insert_event(conn, name, "state_changed", "info",
                          f"State: {prev_s} → {curr_state}",
                          {"from": prev_s, "to": curr_state})
-
-        # Print started
-        if not prev.get("active") and curr_active:
-            filename = (job_data or {}).get("file", {}).get("display_name") or \
-                       (job_data or {}).get("file", {}).get("name", "unknown")
-            insert_event(conn, name, "print_started", "info",
-                         f"Print started: {filename}",
-                         {"filename": filename})
-
-        # Print finished / stopped
+        # print_started fires ONCE per real job. curr_active (a job object exists)
+        # already persists across pauses, so pauses never re-fire. The only
+        # remaining inflation is a process restart clearing prev_state, which made
+        # an already-running job look new. Track the job by filename and only fire
+        # on a witnessed fresh start (machine seen job-less, then a job appears) or
+        # a filename change; a job already running when first seen is adopted
+        # silently, so restarts no longer emit a phantom start.
+        job_key = None
+        if curr_active:
+            job_key = ((job_data or {}).get("file", {}).get("display_name")
+                       or (job_data or {}).get("file", {}).get("name") or "unknown")
+        tracked = current_job.get(name)
+        if curr_active:
+            witnessed_start = tracked is None and prev.get("active") is False
+            new_file = tracked is not None and job_key != tracked
+            if witnessed_start or new_file:
+                insert_event(conn, name, "print_started", "info",
+                             f"Print started: {job_key}",
+                             {"filename": job_key})
+            current_job[name] = job_key
+        else:
+            current_job.pop(name, None)
         if prev.get("active") and not curr_active and prev_s == "PRINTING":
             if curr_state == "FINISHED":
                 insert_event(conn, name, "print_completed", "info",
@@ -233,30 +243,25 @@ def detect_events(conn, name, status_data, job_data, online):
             elif curr_state in ("STOPPED", "ERROR"):
                 insert_event(conn, name, "print_stopped", "warning",
                              f"Print ended with state: {curr_state}")
-
-        # Paused / resumed
         if prev_s == "PRINTING" and curr_state == "PAUSED":
             insert_event(conn, name, "print_paused", "info", "Print paused")
         if prev_s == "PAUSED" and curr_state == "PRINTING":
             insert_event(conn, name, "print_resumed", "info", "Print resumed")
-
-        # Temperature warnings
         nozzle = p.get("temp_nozzle", 0)
         bed    = p.get("temp_bed", 0)
         if nozzle and nozzle > TEMP_WARNING_NOZZLE:
             insert_event(conn, name, "temperature_warning", "warning",
-                         f"Nozzle temp high: {nozzle}°C", {"temp_nozzle": nozzle})
+                         f"Nozzle temp high: {nozzle}°C",
+                         {"temp_nozzle": nozzle})
         if bed and bed > TEMP_WARNING_BED:
             insert_event(conn, name, "temperature_warning", "warning",
-                         f"Bed temp high: {bed}°C", {"temp_bed": bed})
-
-        # Error state
+                         f"Bed temp high: {bed}°C",
+                         {"temp_bed": bed})
         if curr_state == "ERROR" and prev_s != "ERROR":
             insert_event(conn, name, "possible_failure", "error",
-                         "Printer entered ERROR state", {"state": curr_state})
-
+                         f"Printer entered ERROR state",
+                         {"state": curr_state})
     prev_state[name] = {"state": curr_state, "online": online, "active": curr_active}
-
 
 # ── Fetch data from a single Prusa printer ───────────────────
 def fetch_printer(cfg):
