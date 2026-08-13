@@ -67,7 +67,10 @@ journalctl -u prusa-agent -f      # follow logs
 On the LFLab Pi the same pattern applies (service name `lfl-agent`); that Pi also runs a RaspAP Wi-Fi access point that the Bambu machines join.
 
 ## `supabase/schema.sql`
-The complete database — six tables (`machines`, `machine_status_logs`, `machine_events`, `machine_daily_summary`, `alert_config`, `alert_log`), two materialised views, the RPC functions the dashboard calls, Row-Level Security (public read on the four data tables only), and the pg_cron jobs (health check + matview refresh). Run it once in Supabase → SQL Editor.
+The complete database — six tables (`machines`, `machine_status_logs`, `machine_events`, `machine_daily_summary`, `alert_config`, `alert_log`), two materialised views, the RPC functions the dashboard calls, Row-Level Security (public read on the four data tables only), and the pg_cron jobs. Run it once in Supabase → SQL Editor.
+
+### Watching the pipeline itself — `notify_stale_agents()`
+One of the cron jobs is a health check: **`notify_stale_agents()` runs every 10 minutes** and, if a machine has stopped reporting (silent >15 min but seen in the last 25 h, with a 6 h cooldown), it **Slack-alerts the team** via `pg_net` → an incoming webhook. This matters because a dead Pi otherwise leaves the dashboard showing *stale* data that still looks perfectly green — the alert makes that invisible failure visible (see the screenshot in the [top-level README](../README.md#-how-it-works)). The Slack webhook URL lives in the `alert_config` table (inserted once by hand), and `alert_log` records what was sent so alerts de-duplicate. Neither is ever committed to the repo.
 
 ## ⚠️ Secrets
-`config.py` and any `service_role` key **must never be committed** — keep `config.py` in `.gitignore`. The Slack webhook lives in the `alert_config` table (inserted once by hand), not in the repo. The dashboard's **anon** key is safe to commit: it is public and constrained by RLS.
+`config.py` and any `service_role` key **must never be committed** — keep `config.py` in `.gitignore`. The Slack webhook lives in the `alert_config` table, not in the repo. The dashboard's **anon** key is safe to commit: it is public and constrained by RLS.

@@ -9,9 +9,9 @@ Two labs, two printer brands, two protocols &rarr; one live, trustworthy view.</
 </p>
 
 <p align="center">
-  <img src="media/home.gif" width="270" alt="The live Print Lab Digital Twin web platform running on a phone">
+  <img src="media/home.gif" width="88%" alt="The live Print Lab Digital Twin platform — isometric overview of both labs">
 </p>
-<p align="center"><i>The live platform &mdash; real-time status for 13 printers across two labs, on any phone. <a href="https://0022-fyp.vercel.app/">Open it &rarr;</a></i></p>
+<p align="center"><i>The live platform &mdash; an isometric overview of 13 printers across two labs. <a href="https://0022-fyp.vercel.app/">Open it &rarr;</a></i></p>
 
 ---
 
@@ -35,34 +35,29 @@ The clearest example: a raw job count that was inflated **20&ndash;40&times;** b
 
 **[&rarr; Open the live app](https://0022-fyp.vercel.app/)** &nbsp;·&nbsp; installable PWA &nbsp;·&nbsp; works offline on last-known data
 
-Four views, each answering one question. A **Visitor / Staff** toggle hides the deep operational panels from casual viewers.
+Four views, each answering one question, with a **Visitor / Staff** toggle that hides the deep operational panels from casual viewers. The **Overview** (hero above) maps both labs in an isometric 3D scene you can also step into in **VR**.
+
+**📊 Analysis — the data view**
+
+<p align="center"><img src="media/analysis.gif" width="88%" alt="Analysis view: utilisation heatmap, trends, filament mix, leaderboards and health scores"></p>
+<p align="center"><i>Utilisation heatmaps and trends, filament mix, a Bambu-vs-Prusa reliability comparison, leaderboards and per-machine health scores.</i></p>
+
+**On the floor — Live status & planning**
 
 <table>
   <tr>
-    <td width="25%" valign="top" align="center">
-      <img src="media/home.gif" width="100%" alt="Overview / home"><br>
-      <b>🏠 Overview</b><br>
-      <sub>An isometric map of both labs. Tap any machine for its stats, or step inside in <b>VR</b>.</sub>
-    </td>
-    <td width="25%" valign="top" align="center">
-      <img src="media/live.gif" width="100%" alt="Live view"><br>
+    <td width="50%" valign="top" align="center">
+      <img src="media/live.gif" width="300" alt="Live view"><br>
       <b>🟢 Live</b><br>
-      <sub>Every machine's current state, progress, temps and filament &mdash; updating in real time.</sub>
+      <sub>Every machine's current state, progress, temps and filament — updating in real time. Tap a machine for its full card.</sub>
     </td>
-    <td width="25%" valign="top" align="center">
-      <img src="media/analysis.gif" width="100%" alt="Analysis"><br>
-      <b>📊 Analysis</b><br>
-      <sub>Utilisation heatmaps, trends, filament mix and a Bambu-vs-Prusa reliability comparison.</sub>
-    </td>
-    <td width="25%" valign="top" align="center">
-      <img src="media/planner.gif" width="100%" alt="Scenario planner"><br>
+    <td width="50%" valign="top" align="center">
+      <img src="media/planner.gif" width="300" alt="Scenario planner"><br>
       <b>🗓️ Planner</b><br>
-      <sub>Best time to visit, "guess who's free next", and a capacity simulator for adding machines.</sub>
+      <sub>Best time to visit, a "guess who's free next" game, average wait times, and a capacity simulator for adding machines.</sub>
     </td>
   </tr>
 </table>
-
-The **Overview** doubles as a 3D/VR walkthrough &mdash; the same isometric scene you can enter and move through, so a visitor understands the physical layout before touching a single chart.
 
 More detail: [`dashboard/README.md`](dashboard).
 
@@ -85,6 +80,10 @@ Instead of hammering the raw log, the front end calls Postgres **RPC functions**
 
 **4 · Front end — the platform above.**
 A dependency-free PWA (vanilla JS + Supabase client) renders the four views, caches last-known data in a service worker, and installs to a phone home screen.
+
+> **Keeping the data honest.** A `pg_cron` job (`notify_stale_agents`, every 10 min) watches the pipeline itself and Slack-alerts the team when a machine stops reporting — because a dead Pi leaves the dashboard showing *stale* data that still looks perfectly green. Catching that kind of invisible failure is the whole point ([core finding](#the-core-finding)).
+>
+> <img src="media/alert-slack.jpg" width="62%" alt="Slack alerts: Print Lab Digital Twin — machines stopped reporting, listing the silent machines">
 
 More detail: [`deploy/README.md`](deploy).
 
@@ -111,6 +110,34 @@ Full write-up, fabrication files and the LED playback code are in [`exhibit/`](e
 
 ---
 
+## 🚀 Run it yourself
+
+There are three levels, depending on how deep you want to go.
+
+**1 · Just look.** Open **[0022-fyp.vercel.app](https://0022-fyp.vercel.app/)** — the live platform, reading real data from both labs. Nothing to install.
+
+**2 · Run the web app yourself.** It is a static site (no build step, no environment variables). The public **read-only** Supabase URL + anon key are already committed in `dashboard/js/supabase.js` — that is safe to share, because Row-Level Security makes that key read-only — so a clone shows the real data immediately:
+
+```bash
+git clone https://github.com/Lizzim24/0022-fyp.git
+cd 0022-fyp/dashboard
+python3 -m http.server 8000      # then open http://localhost:8000
+```
+
+To host your own copy, point **Vercel / Netlify / GitHub Pages** at the `dashboard/` folder as the site root — no configuration needed.
+
+**3 · Rebuild the whole system from scratch.** This is the full operational twin, and it needs **hardware**: a Raspberry Pi per lab plus the printers themselves. The code and schema are all here so it can be rebuilt or adapted:
+
+1. Create a Supabase project and run `deploy/supabase/schema.sql` (tables, materialised views, RPCs, RLS, cron jobs).
+2. On each Pi, `cp config.example.py config.py`, fill in the printer IPs / access codes and your Supabase keys, and run the matching agent (`deploy/pi-LFlab/` or `deploy/pi-CElab/`) as a `systemd` service.
+3. Point `dashboard/js/supabase.js` at your own project URL + anon key.
+
+> Only the secrets stay out of the repo: `config.py` (printer credentials, database password) and any `service_role` key are `.gitignore`d, and the Slack webhook lives in the `alert_config` table — never in git.
+
+Per-layer details: [`dashboard/README.md`](dashboard) · [`deploy/README.md`](deploy) · [`exhibit/README.md`](exhibit).
+
+---
+
 ## 📁 Repository structure
 
 ```
@@ -131,30 +158,11 @@ Full write-up, fabrication files and the LED playback code are in [`exhibit/`](e
 │   ├── led-playback/   # Arduino LED playback (baked from Supabase history)
 │   ├── media/          # build + finished photos
 │   └── README.md
-├── media/              # shared images/GIFs (platform views, architecture)
+├── media/              # shared images/GIFs (platform views, architecture, alerts)
 ├── scripts/            # helper scripts (e.g. prusa_full_data.py)
 ├── web/data/           # snapshot.json — offline fallback
 └── meetinglog/         # supervision notes
 ```
-
----
-
-## 🚀 Run it yourself
-
-**Just want to see it?** &rarr; **[0022-fyp.vercel.app](https://0022-fyp.vercel.app/)**
-
-**Run the front end locally:**
-```bash
-git clone https://github.com/Lizzim24/0022-fyp.git
-cd 0022-fyp/dashboard
-python3 -m http.server 8000      # then open http://localhost:8000
-```
-The app reads from a public (read-only) Supabase project out of the box.
-
-**Bring up your own fleet:**
-1. Create a Supabase project and run `deploy/supabase/schema.sql`.
-2. On a Raspberry Pi per lab, copy `config.example.py` &rarr; `config.py`, fill in machine IPs / access codes and your Supabase keys, and run the matching agent as a `systemd` service.
-3. Point `dashboard/js/supabase.js` at your project URL + anon key.
 
 ---
 
@@ -164,4 +172,4 @@ The app reads from a public (read-only) Supabase project out of the box.
 
 Built and written by **Lizi Wang**. Data window: 77 days, 1.68M+ status rows, 38.7K inferred events.
 
-<sub>License: TBD · Live demo: https://0022-fyp.vercel.app/ · Repo: https://github.com/Lizzim24/0022-fyp</sub>
+<sub>License: <a href="LICENSE">MIT</a> · Live demo: https://0022-fyp.vercel.app/ · Repo: https://github.com/Lizzim24/0022-fyp</sub>
