@@ -9,9 +9,9 @@ Two labs, two printer brands, two protocols &rarr; one live, trustworthy view.</
 </p>
 
 <p align="center">
-  <img src="media/hero_device.gif" width="80%" alt="Physical exhibition console: laser-cut model with LED-lit printer miniatures and an embedded tablet running the live dashboard">
+  <img src="exhibit/media/console-hero.jpg" width="82%" alt="The exhibition console: laser-cut model with LED-lit printer miniatures and an embedded tablet running the live dashboard">
 </p>
-<p align="center"><i>The exhibition build &mdash; 3D-printed printer miniatures with live LED status, around an embedded tablet running the real dashboard. Physical and digital, side by side.</i></p>
+<p align="center"><i>The exhibition build &mdash; 3D-printed printer miniatures with live LED status, around an embedded tablet running the real dashboard. Physical and digital, side by side. (<a href="media/hero_device.gif">see it lit &amp; animated</a>)</i></p>
 
 ---
 
@@ -64,6 +64,8 @@ Four views, each answering one question. A **Visitor / Staff** toggle hides the 
 
 The **Overview** doubles as a 3D/VR walkthrough &mdash; the same isometric scene you can enter and move through, so a visitor understands the physical layout before touching a single chart.
 
+More detail: [`dashboard/README.md`](dashboard).
+
 ---
 
 ## 🏗️ How it works
@@ -84,6 +86,8 @@ Instead of hammering the raw log, the front end calls Postgres **RPC functions**
 **4 · Front end — the platform above.**
 A dependency-free PWA (vanilla JS + Supabase client) renders the four views, caches last-known data in a service worker, and installs to a phone home screen.
 
+More detail: [`deploy/README.md`](deploy).
+
 ### Multi-vendor integration, at a glance
 
 | | **LFLab** | **CELab** |
@@ -101,11 +105,13 @@ Same job, two completely different data paths &mdash; which is exactly why they 
 
 The platform lives inside a physical exhibition console (the hero above): a **laser-cut** enclosure holding an embedded tablet, ringed by **3D-printed printer miniatures** whose **RGB LEDs mirror each real machine's live status** (printing / idle / error / offline), with a printed legend. It makes the digital twin tangible &mdash; you watch the lights change as the real lab works.
 
-<!-- Drop your own build/design images into media/ and reference them here, e.g.:
-<p align="center"><img src="media/design/model.png" width="45%"> <img src="media/design/laser-cut.png" width="45%"></p>
--->
+<p>
+  <img src="exhibit/media/legend.jpg" width="32%" alt="Printed status legend">
+  <img src="exhibit/media/laser-cut.jpg" width="32%" alt="Laser-cut body">
+  <img src="exhibit/media/internals-wiring.jpg" width="32%" alt="Internal wiring with Arduino MKR and NeoPixels">
+</p>
 
-Design and fabrication sources (3D models, laser-cut files) live in [`media/design/`](media/design).
+Full write-up, fabrication files and the LED playback code are in [`exhibit/`](exhibit).
 
 ---
 
@@ -116,13 +122,20 @@ Design and fabrication sources (3D models, laser-cut files) live in [`media/desi
 ├── dashboard/          # Frontend PWA — the live platform
 │   ├── index.html
 │   ├── js/             # live.js · analysis.js · planner.js · supabase.js
-│   ├── img/            # static hero images, icons
+│   ├── img/ · icons/
 │   ├── style.css · manifest.json · service-worker.js
+│   └── README.md
 ├── deploy/             # Edge acquisition + database
 │   ├── pi-LFlab/       # Bambu MQTT agent (lfl_agent.py) + daily_summary.py
 │   ├── pi-CElab/       # Prusa REST agent (prusa_mqtt_agent.py) + systemd service
-│   └── supabase/       # schema.sql, migrations, Arduino LED timeline
-├── media/              # images, GIFs, design/fabrication files
+│   ├── supabase/       # schema.sql
+│   └── README.md
+├── exhibit/            # The physical digital twin
+│   ├── design/         # 3D-print + laser-cut fabrication files
+│   ├── led-playback/   # Arduino LED playback (baked from Supabase history)
+│   ├── media/          # build + finished photos
+│   └── README.md
+├── media/              # shared images/GIFs (hero, platform views, architecture)
 ├── scripts/            # helper scripts (e.g. prusa_full_data.py)
 ├── web/data/           # snapshot.json — offline fallback
 └── meetinglog/         # supervision notes
