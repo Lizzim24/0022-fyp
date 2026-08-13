@@ -9,9 +9,9 @@ Two labs, two printer brands, two protocols &rarr; one live, trustworthy view.</
 </p>
 
 <p align="center">
-  <img src="exhibit/media/console-hero.jpg" width="82%" alt="The exhibition console: laser-cut model with LED-lit printer miniatures and an embedded tablet running the live dashboard">
+  <img src="media/home.gif" width="270" alt="The live Print Lab Digital Twin web platform running on a phone">
 </p>
-<p align="center"><i>The exhibition build &mdash; 3D-printed printer miniatures with live LED status, around an embedded tablet running the real dashboard. Physical and digital, side by side. (<a href="media/hero_device.gif">see it lit &amp; animated</a>)</i></p>
+<p align="center"><i>The live platform &mdash; real-time status for 13 printers across two labs, on any phone. <a href="https://0022-fyp.vercel.app/">Open it &rarr;</a></i></p>
 
 ---
 
@@ -103,13 +103,9 @@ Same job, two completely different data paths &mdash; which is exactly why they 
 
 ## 🛠️ The physical build
 
-The platform lives inside a physical exhibition console (the hero above): a **laser-cut** enclosure holding an embedded tablet, ringed by **3D-printed printer miniatures** whose **RGB LEDs mirror each real machine's live status** (printing / idle / error / offline), with a printed legend. It makes the digital twin tangible &mdash; you watch the lights change as the real lab works.
+To make the twin tangible, the platform also lives inside a physical exhibition console: a laser-cut body with the tablet embedded in the middle running the live dashboard, ringed by 3D-printed printer miniatures whose LEDs mirror each real machine's status.
 
-<p>
-  <img src="exhibit/media/legend.jpg" width="32%" alt="Printed status legend">
-  <img src="exhibit/media/laser-cut.jpg" width="32%" alt="Laser-cut body">
-  <img src="exhibit/media/internals-wiring.jpg" width="32%" alt="Internal wiring with Arduino MKR and NeoPixels">
-</p>
+<p align="center"><img src="exhibit/media/console-hero.jpg" width="66%" alt="The exhibition console: LED-lit printer miniatures around an embedded tablet running the dashboard"></p>
 
 Full write-up, fabrication files and the LED playback code are in [`exhibit/`](exhibit).
 
@@ -135,7 +131,7 @@ Full write-up, fabrication files and the LED playback code are in [`exhibit/`](e
 │   ├── led-playback/   # Arduino LED playback (baked from Supabase history)
 │   ├── media/          # build + finished photos
 │   └── README.md
-├── media/              # shared images/GIFs (hero, platform views, architecture)
+├── media/              # shared images/GIFs (platform views, architecture)
 ├── scripts/            # helper scripts (e.g. prusa_full_data.py)
 ├── web/data/           # snapshot.json — offline fallback
 └── meetinglog/         # supervision notes
