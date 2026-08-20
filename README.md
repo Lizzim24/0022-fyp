@@ -89,14 +89,16 @@ More detail: [`deploy/README.md`](deploy).
 
 ### Multi-vendor integration, at a glance
 
-| | **LFLab** | **CELab** |
-|---|---|---|
-| Printers | Bambu (X1C, H2D) + Prusa | Prusa Core One |
-| Protocol | **MQTT** (push) | **PrusaLink REST** (poll) |
-| Edge agent | `deploy/pi-LFlab/lfl_agent.py` | `deploy/pi-CElab/prusa_mqtt_agent.py` |
-| Network | Pi as RaspAP access point | Pi on lab network |
+|            | **LFLab**                                                   | **CELab**               |
+| ---------- | ----------------------------------------------------------- | ------------------------ |
+| Printers   | Bambu H2D ×4, X1C ×2 + Prusa XL ×2, Core One ×1              | Prusa Core One ×4        |
+| Protocol   | **MQTT push** (Bambu) **+ PrusaLink REST poll** (Prusa), in parallel | **PrusaLink REST** (poll) |
+| Edge agent | `deploy/pi-LFlab/lfl_agent.py` — one agent, both protocols  | `deploy/pi-CELab/prusa_mqtt_agent.py` |
+| Network    | Pi as RaspAP access point                                   | Pi on lab network        |
 
-Same job, two completely different data paths &mdash; which is exactly why they make a good stress test for the integration problem.
+Same job, two completely different data paths — which is exactly why they make a good stress test for the integration problem. In LFLab a **single agent** holds persistent MQTT subscriptions to the six Bambu machines while, on the same loop, polling the three Prusa machines over PrusaLink REST every 30 s; both are normalised to one status schema before hitting the database. CELab, being Prusa-only, runs the REST path alone.
+
+> Note: `prusa_mqtt_agent.py` reads its printers over **PrusaLink REST** — the "mqtt" in the name refers only to the outbound publish to the cetools MQTT broker, not to how printer data is acquired.
 
 ---
 
