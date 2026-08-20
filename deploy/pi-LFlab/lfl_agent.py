@@ -452,7 +452,7 @@ def poll_prusa(conn, mqtt_pub):
                 stopped_at = last_print_progress.pop(name, None)
                 if stopped_at is not None:
                     log_print_stop_event(conn, name, stopped_at)
-        except psycopg2.OperationalError:
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
             log.warning("DB disconnected, reconnecting...")
             try:
                 conn = get_db()

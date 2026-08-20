@@ -7,7 +7,9 @@
 const REFRESH_MS = 10_000;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-// NOTE: job_remaining from the Pi agents is already in MINUTES, not seconds
+// NOTE: the raw database retains vendor-native job_remaining units
+// (Bambu minutes, Prusa seconds). latest_status_per_machine()
+// normalises the value to MINUTES at the query layer before it reaches Live View.
 // (verified against real print run durations — e.g. a job reporting
 // job_remaining=76 actually finished ~76 minutes later, not 76 seconds).
 // This used to be treated as seconds here, which made every ETA display

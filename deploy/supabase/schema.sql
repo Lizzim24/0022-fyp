@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS machine_status_logs (
     fan_print_rpm   INTEGER,
     -- Job snapshot (denormalised)
     job_progress    NUMERIC(5,2),     -- 0.00 – 100.00
-    job_remaining   INTEGER,          -- seconds remaining
+    job_remaining   INTEGER,          -- vendor-native remaining time: Bambu minutes, Prusa seconds
     -- Filament / job detail (populated where the vendor exposes it)
     filament_type   TEXT,             -- PLA, PETG, ...
     layer_height    NUMERIC(4,3),
@@ -221,17 +221,35 @@ RETURNS TABLE(machine_id uuid, "timestamp" timestamptz, state text, online boole
               machine_name text, machine_lab text, machine_type text)
 LANGUAGE sql STABLE SET search_path TO 'public'
 AS $$
-  SELECT l.machine_id, l."timestamp", l.state, l.online, l.job_progress, l.job_remaining,
-         l.filament_type, l.filament_brand, l.filament_color, l.filament_remain,
-         l.temp_nozzle, l.nozzle_diameter,
-         m.name, m.lab, m.machine_type
-  FROM machines m
-  CROSS JOIN LATERAL (
-    SELECT * FROM machine_status_logs s
-    WHERE s.machine_id = m.id
-    ORDER BY s."timestamp" DESC
-    LIMIT 1
-  ) l;
+  SELECT
+  l.machine_id,
+  l."timestamp",
+  l.state,
+  l.online,
+  l.job_progress,
+  CASE
+    WHEN l.job_remaining IS NULL THEN NULL
+    WHEN m.machine_type ILIKE 'Prusa%'
+      THEN ROUND(l.job_remaining / 60.0)::integer
+    ELSE l.job_remaining
+  END AS job_remaining,
+  l.filament_type,
+  l.filament_brand,
+  l.filament_color,
+  l.filament_remain,
+  l.temp_nozzle,
+  l.nozzle_diameter,
+  m.name,
+  m.lab,
+  m.machine_type
+FROM machines m
+CROSS JOIN LATERAL (
+  SELECT *
+  FROM machine_status_logs s
+  WHERE s.machine_id = m.id
+  ORDER BY s."timestamp" DESC
+  LIMIT 1
+) l;
 $$;
 
 -- 6.2 deduped_daily_jobs(since) — trustworthy job count per machine per day.
@@ -254,16 +272,26 @@ RETURNS TABLE(weekday integer, hour integer, total bigint, active_count bigint,
               rem_sum bigint, rem_cnt bigint)
 LANGUAGE sql STABLE SET search_path TO 'public'
 AS $$
-  SELECT extract(dow  FROM hour_start AT TIME ZONE 'Europe/London')::int AS weekday,
-         extract(hour FROM hour_start AT TIME ZONE 'Europe/London')::int AS hour,
-         sum(total)::bigint,
-         sum(active_count)::bigint,
-         sum(rem_sum)::bigint,
-         sum(rem_cnt)::bigint
-  FROM machine_hourly_usage
-  WHERE hour_start >= date_trunc('hour', since)
-    AND (machine_filter IS NULL OR machine_id = machine_filter)
-  GROUP BY 1, 2;
+  SELECT
+  extract(dow  FROM u.hour_start AT TIME ZONE 'Europe/London')::int AS weekday,
+  extract(hour FROM u.hour_start AT TIME ZONE 'Europe/London')::int AS hour,
+  sum(u.total)::bigint,
+  sum(u.active_count)::bigint,
+  ROUND(
+    SUM(
+      CASE
+        WHEN m.machine_type ILIKE 'Prusa%'
+          THEN u.rem_sum / 60.0
+        ELSE u.rem_sum::numeric
+      END
+    )
+  )::bigint AS rem_sum,
+  sum(u.rem_cnt)::bigint
+FROM machine_hourly_usage u
+JOIN machines m ON m.id = u.machine_id
+WHERE u.hour_start >= date_trunc('hour', since)
+  AND (machine_filter IS NULL OR u.machine_id = machine_filter)
+GROUP BY 1, 2;
 $$;
 
 -- 6.4 usage_by_machine_weekday_hour(since) — same, broken out per machine

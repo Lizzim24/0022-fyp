@@ -295,7 +295,8 @@ async function initWaitTime() {
     if (n === 0) { cells.push(`<div class="wait-cell"><div class="wait-cell-hour">${hr}:00</div><div class="wait-cell-val" style="color:#ccc">—</div></div>`); continue; }
 
     const avgOccupancy = sumRate / n; // fraction of machines busy
-    // job_remaining (and therefore rem_sum) is already in MINUTES, not seconds —
+    // usage_by_weekday_hour() normalises vendor-native remaining-time
+    // values to MINUTES at the query layer.
     // verified against real print durations. Previously this was divided by 60
     // again down below, making every wait estimate ~60x too short.
     const avgRemMins = remSamples > 0 ? sumRem / remSamples : 0;
@@ -324,30 +325,35 @@ async function initWaitTime() {
 // Shows the machines currently printing (times hidden), visitor picks who
 // they think will finish first, then reveals the real remaining times.
 function fmt_mins_left(mins) {
-  // job_remaining is already in MINUTES, not seconds — see fmt_remaining() in live.js
+  // Query-layer values are normalised to MINUTES.
   const m = Math.round(mins);
   if (m < 60) return `${m} min`;
   return `${Math.floor(m/60)}h ${m%60}m`;
 }
 
 async function fetchBusyMachines() {
-  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const { data } = await db
-    .from('machine_status_logs')
-    .select('machine_id, job_remaining, state, online, timestamp, machines(name)')
-    .gte('timestamp', since)
-    .order('timestamp', { ascending: false });
+  const cutoff = Date.now() - 5 * 60 * 1000;
 
-  if (!data) return [];
-  const seen = new Set(), busy = [];
-  for (const row of data) {
-    if (seen.has(row.machine_id)) continue;
-    seen.add(row.machine_id);
-    if (row.online && ['PRINTING','BUSY'].includes((row.state||'').toUpperCase()) && row.job_remaining > 0) {
-      busy.push({ id: row.machine_id, name: row.machines?.name || row.machine_id, remaining: row.job_remaining });
-    }
+  const { data, error } = await db.rpc('latest_status_per_machine');
+
+  if (error || !data) {
+    console.warn('fetchBusyMachines failed', error);
+    return [];
   }
-  return busy;
+
+  return data
+    .filter(r =>
+      r.online &&
+      r.timestamp &&
+      new Date(r.timestamp).getTime() >= cutoff &&
+      ['PRINTING', 'BUSY'].includes((r.state || '').toUpperCase()) &&
+      Number(r.job_remaining) > 0
+    )
+    .map(r => ({
+      id: r.machine_id,
+      name: r.machine_name || r.machine_id,
+      remaining: Number(r.job_remaining)   // already normalised to minutes
+    }));
 }
 
 function renderGuessPrompt(card, machines) {
